@@ -1,7 +1,7 @@
 # Basic Doyle-Fuller-Newman model, Chen2020, isothermal prescribed current.
 # Run the forward solve with: python tutorials/battery/run_dfn.py
-# This file defines equations/operators; integration lives in tutorial support.
-# nx_* and nr_* are independent mesh sizes (at least 3 cells each).
+# Fixed demonstration: five cells per coordinate, 5 A discharge to 2.5 V.
+# Equations and spatial operators live here; Python supplies time integration.
 nx_n: ℕ = 5
 nx_s: ℕ = 5
 nx_p: ℕ = 5
@@ -9,9 +9,8 @@ nr_n: ℕ = 5
 nr_p: ℕ = 5
 current_nominal: ℝ = 5.0
 
-from tutorials.battery.functions import minimum, maximum, softplus, sinh, tanh
-from tutorials.battery.chen2020 import faraday, gas_constant, temperature, length_n, length_s, length_p, area, radius_n, radius_p, diffusivity_n, diffusivity_p, sigma_n, sigma_p, porosity_n, porosity_s, porosity_p, active_n, active_p, cmax_n, cmax_p, initial_n, initial_p, initial_e, t_plus, ocp_barrier, ocp_n, ocp_p, exchange_n, exchange_p, electrolyte_diffusivity, electrolyte_conductivity
-from tutorials.battery.finite_volume import gradient_matrix, divergence_matrix, arithmetic_matrix, harmonic_matrix, matrix_vector, harmonic_edges, particle_matrix, particle_source, surface_matrix, particle_inventory, gradient_values, divergence_values
+from tutorials.battery.chen2020 import faraday, gas_constant, temperature, length_n, length_s, length_p, area, radius_n, radius_p, diffusivity_n, diffusivity_p, sigma_n, sigma_p, porosity_n, porosity_s, porosity_p, active_n, active_p, cmax_n, cmax_p, initial_n, initial_p, initial_e, t_plus, minimum, maximum, softplus, sinh, tanh, ocp_barrier, ocp_n, ocp_p, exchange_n, exchange_p, electrolyte_diffusivity, electrolyte_conductivity
+from tutorials.battery.finite_volume import arithmetic_matrix, harmonic_matrix, matrix_vector, harmonic_edges, particle_matrix, particle_source, surface_matrix, particle_inventory, gradient_values, divergence_values
 
 ns_n: ℕ = nx_n*nr_n
 ns_p: ℕ = nx_p*nr_p
@@ -33,15 +32,8 @@ eps: ℝ[ne] = concat(eps_n, eps_s, eps_p)
 transport: ℝ[ne] = eps**1.5
 separator_zero: ℝ[nx_s] = zeros(nx_s)
 
-G_e: ℝ[ne+1,ne] = gradient_matrix(width, ne)
-D_e: ℝ[ne,ne+1] = divergence_matrix(width, ne)
 A_e: ℝ[ne+1,ne] = arithmetic_matrix(width, ne)
 H_e: ℝ[ne+1,ne] = harmonic_matrix(width, ne)
-G_n: ℝ[nx_n+1,nx_n] = gradient_matrix(width_n, nx_n)
-G_n[0,0] = 2.0 / width_n[0]
-G_p: ℝ[nx_p+1,nx_p] = gradient_matrix(width_p, nx_p)
-D_n: ℝ[nx_n,nx_n+1] = divergence_matrix(width_n, nx_n)
-D_p: ℝ[nx_p,nx_p+1] = divergence_matrix(width_p, nx_p)
 positive_boundary: ℝ[nx_p+1] = zeros(nx_p+1)
 positive_boundary[nx_p] = 1.0
 K_n: ℝ[ns_n,ns_n] = particle_matrix(nx_n, nr_n, radius_n, diffusivity_n)
@@ -55,7 +47,7 @@ cn0: ℝ[ns_n] = for k:ℕ(ns_n) -> initial_n + 0.0*k
 cp0: ℝ[ns_p] = for k:ℕ(ns_p) -> initial_p + 0.0*k
 ce0: ℝ[ne] = for k:ℕ(ne) -> initial_e + 0.0*k
 x0: ℝ[nd] = concat(cn0, cp0, ce0, [0.0])
-# Constant equilibrium/kinetic reference offsets improve float32 arithmetic without changing
+# Constant equilibrium/kinetic reference offsets condition the nonlinear solve without changing
 # the equations. Physical phi_sn=z_n, phi_sp=ref_p+z_p, phi_e=ref_e+z_e.
 un0: ℝ[1] = ocp_n([initial_n/cmax_n])
 u_n_initial: ℝ = un0[0]
@@ -85,7 +77,6 @@ wn: ℝ[ns_n] = particle_inventory(nx_n, nr_n, radius_n, length_n/nx_n, active_n
 wp: ℝ[ns_p] = particle_inventory(nx_p, nr_p, radius_p, length_p/nx_p, active_p)
 inventory_weights: ℝ[nd] = concat(wn, wp, eps*width, [0.0])
 
-# Replace this function to prescribe another current. Positive is discharge.
 def asinh_scalar(q: ℝ): ℝ:
     return log(q+sqrt(q*q+1.0))
 
@@ -145,6 +136,14 @@ def dfn_algebraic(t: ℝ, x: ℝ[nd], z: ℝ[na]): ℝ[na]:
 def dfn_voltage(t: ℝ, x: ℝ[nd], z: ℝ[na]): ℝ:
     return ref_p + 1.5*z[nx_n+nx_p-1] - 0.5*z[nx_n+nx_p-2]
 
-def dfn_events(t: ℝ, x: ℝ[nd], z: ℝ[na]): ℝ[2]:
-    voltage: ℝ = dfn_voltage(t,x,z)
-    return [voltage-2.5,4.2-voltage]
+def physical_potentials(z: ℝ[na]): ℝ[na]:
+    return concat(z[0:nx_n], ref_p+z[nx_n:nx_n+nx_p], ref_e+z[nx_n+nx_p:na])
+
+def surface_n(x: ℝ[nd]): ℝ[nx_n]:
+    return S_n @ x[0:ns_n]
+
+def surface_p(x: ℝ[nd]): ℝ[nx_p]:
+    return S_p @ x[ns_n:ns_n+ns_p]
+
+def dfn_cutoff(t: ℝ, x: ℝ[nd], z: ℝ[na]): ℝ:
+    return dfn_voltage(t,x,z)-2.5

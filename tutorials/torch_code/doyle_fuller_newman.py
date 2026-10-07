@@ -65,13 +65,21 @@ def dfn_algebraic(t, x, z):
 def dfn_voltage(t, x, z):
     return ((ref_p + (1.5 * z[int(((nx_n + nx_p) - 1))])) - (0.5 * z[int(((nx_n + nx_p) - 2))]))
 
-def dfn_events(t, x, z, nd=None, na=None):
+def physical_potentials(z):
+    return torch.cat([z[int(0):int(nx_n)], (ref_p + z[int(nx_n):int((nx_n + nx_p))]), (ref_e + z[int((nx_n + nx_p)):int(na)])])
+
+def surface_n(x):
+    return (S_n @ x[int(0):int(ns_n)])
+
+def surface_p(x):
+    return (S_p @ x[int(ns_n):int((ns_n + ns_p))])
+
+def dfn_cutoff(t, x, z, nd=None, na=None):
     if nd is None:
         nd = int(x.shape[0])
     if na is None:
         na = int(z.shape[0])
-    voltage = dfn_voltage(t, x, z)
-    return torch.stack([torch.as_tensor((voltage - 2.5)), torch.as_tensor((4.2 - voltage))])
+    return (dfn_voltage(t, x, z) - 2.5)
 
 def minimum(q, b):
     result = (q + 0.0)
@@ -128,20 +136,6 @@ def electrolyte_diffusivity(ce):
 def electrolyte_conductivity(ce):
     q = (maximum(ce, 10.0) / 1000.0)
     return (((0.1297 * (q ** 3)) - (2.51 * (q ** 1.5))) + (3.329 * q))
-
-def gradient_matrix(width, n):
-    result = torch.zeros(int((n + 1)), int(n), device=DEVICE)
-    for k in range(int(1), int(n)):
-        result[int(k), int((k - 1))] = ((-2.0) / (width[int((k - 1))] + width[int(k)]))
-        result[int(k), int(k)] = (2.0 / (width[int((k - 1))] + width[int(k)]))
-    return result
-
-def divergence_matrix(width, n):
-    result = torch.zeros(int(n), int((n + 1)), device=DEVICE)
-    for k in range(int(0), int(n)):
-        result[int(k), int(k)] = ((-1.0) / width[int(k)])
-        result[int(k), int((k + 1))] = (1.0 / width[int(k)])
-    return result
 
 def arithmetic_matrix(width, n):
     result = torch.zeros(int((n + 1)), int(n), device=DEVICE)
@@ -277,15 +271,8 @@ eps_p = torch.stack([(porosity_p + (0.0 * k)) for _fi_k in range(int(nx_p)) for 
 eps = torch.cat([eps_n, eps_s, eps_p])
 transport = (eps ** 1.5)
 separator_zero = torch.zeros(int(nx_s), device=DEVICE)
-G_e = gradient_matrix(width, ne)
-D_e = divergence_matrix(width, ne)
 A_e = arithmetic_matrix(width, ne)
 H_e = harmonic_matrix(width, ne)
-G_n = gradient_matrix(width_n, nx_n)
-G_n[int(0), int(0)] = (2.0 / width_n[int(0)])
-G_p = gradient_matrix(width_p, nx_p)
-D_n = divergence_matrix(width_n, nx_n)
-D_p = divergence_matrix(width_p, nx_p)
 positive_boundary = torch.zeros(int((nx_p + 1)), device=DEVICE)
 positive_boundary[int(nx_p)] = 1.0
 K_n = particle_matrix(nx_n, nr_n, radius_n, diffusivity_n)
