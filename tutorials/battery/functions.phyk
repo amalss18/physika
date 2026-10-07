@@ -1,0 +1,30 @@
+# Elementary functions needed by this tutorial on the unchanged compiler.
+# Implicit indexed loops infer their bounds from the input vector.
+def minimum(q: ℝ[m], b: ℝ): ℝ[m]:
+    result: ℝ[m] = q + 0.0
+    for k:
+        if q[k] > b:
+            result[k] = b
+    return result
+
+def maximum(q: ℝ[m], b: ℝ): ℝ[m]:
+    result: ℝ[m] = q + 0.0
+    for k:
+        if q[k] < b:
+            result[k] = b
+    return result
+
+def softplus(q: ℝ[m]): ℝ[m]:
+    return maximum(q,0.0) + log(1.0+exp(-abs(q)))
+
+def sinh(q: ℝ[m]): ℝ[m]:
+    return (exp(q)-exp(-q))/2.0
+
+def tanh(q: ℝ[m]): ℝ[m]:
+    result: ℝ[m] = q + 0.0
+    for k:
+        if q[k] >= 0.0:
+            result[k] = (1.0-exp(-2.0*q[k]))/(1.0+exp(-2.0*q[k]))
+        else:
+            result[k] = (exp(2.0*q[k])-1.0)/(exp(2.0*q[k])+1.0)
+    return result
