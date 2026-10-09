@@ -342,7 +342,6 @@ def integrate_dfn(): ℝ[82,nb+1]:
                 if algebraic_norm > algebraic_limit:
                     status = -6.0
                     live = 0.0
-                print([t,accepted,rejected,iterations])
     output[0,0] = saved
     output[0,1] = status
     output[0,2] = accepted

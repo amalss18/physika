@@ -81,6 +81,31 @@ def dfn_cutoff(t, x, z, nd=None, na=None):
         na = int(z.shape[0])
     return (dfn_voltage(t, x, z) - 2.5)
 
+def trajectory_fields(states):
+    fields = torch.zeros(int(82), int(nf), device=DEVICE)
+    x = torch.zeros(int(nd), device=DEVICE)
+    z = torch.zeros(int(na), device=DEVICE)
+    t = 0.0
+    for row in range(int(1), int((states[int(0), int(0)] + 1.0))):
+        t = states[int(row), int(0)]
+        x = states[int(row), int(1):int((nd + 1))]
+        z = states[int(row), int((nd + 1)):int((nb + 1))]
+        fields[int(row), :] = torch.cat([torch.stack([torch.as_tensor(dfn_voltage(t, x, z))]), surface_n(x), surface_p(x), physical_potentials(z)])
+    return fields
+
+def lithium_inventory_drift(states):
+    initial = (states[int(1), int(1):int((nd + 1))] @ inventory_weights)
+    drift = 0.0
+    change = 0.0
+    for row in range(int(1), int((states[int(0), int(0)] + 1.0))):
+        change = (torch.abs(((states[int(row), int(1):int((nd + 1))] @ inventory_weights) - initial) if isinstance(((states[int(row), int(1):int((nd + 1))] @ inventory_weights) - initial), torch.Tensor) else torch.tensor(float(((states[int(row), int(1):int((nd + 1))] @ inventory_weights) - initial)))) / torch.abs(initial if isinstance(initial, torch.Tensor) else torch.tensor(float(initial))))
+        if change > drift:
+            drift = change
+    return drift
+
+def prediction_values(states, fields, row):
+    return torch.stack([torch.as_tensor(states[int(row), int(0)]), torch.as_tensor(fields[int(row), int(0)]), torch.as_tensor(states[int(row), int(nd)])])
+
 def minimum(q, b):
     result = (q + 0.0)
     for k in range(len(q)):
@@ -627,7 +652,6 @@ def integrate_dfn():
                 if algebraic_norm > algebraic_limit:
                     status = (-6.0)
                     live = 0.0
-                print(torch.stack([torch.as_tensor(t), torch.as_tensor(accepted), torch.as_tensor(rejected), torch.as_tensor(iterations)]))
     output[int(0), int(0)] = saved
     output[int(0), int(1)] = status
     output[int(0), int(2)] = accepted
@@ -732,3 +756,18 @@ newton_tolerance = 2e-06
 algebraic_tolerance = 0.002
 relative_tolerance = 0.0001
 absolute_tolerance = 1e-06
+nf = (((1 + nx_n) + nx_p) + na)
+trajectory = integrate_dfn()
+prediction_fields = trajectory_fields(trajectory)
+inventory_drift = lithium_inventory_drift(trajectory)
+if trajectory[int(0), int(1)] == 1.0:
+    print('Predictions: [time (s), voltage (V), discharged capacity (Ah)]')
+    print(prediction_values(trajectory, prediction_fields, 1.0))
+    print(prediction_values(trajectory, prediction_fields, 3.0))
+    print(prediction_values(trajectory, prediction_fields, 31.0))
+    print(prediction_values(trajectory, prediction_fields, 61.0))
+    print('Cutoff prediction: [time (s), voltage (V), discharged capacity (Ah)]')
+    print(prediction_values(trajectory, prediction_fields, trajectory[int(0), int(0)]))
+else:
+    print('DFN solve did not reach cutoff; solver status:')
+print(print(trajectory[int(0), int(1)]))
