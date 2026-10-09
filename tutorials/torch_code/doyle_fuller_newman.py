@@ -222,6 +222,421 @@ def divergence_values(flux, width, n):
     right = flux[int(1):int((n + 1))]
     return ((right - left) / width)
 
+def gaussian_solve(A, b):
+    a_row = get_2d_array_num_rows(A)
+    a_col = get_2d_array_num_cols(A)
+    new_col = (a_col + 1)
+    aug = torch.zeros(int(a_row), int(new_col), device=DEVICE)
+    for i in range(int(0), int(a_row)):
+        aug[int(i), :int(a_col)] = A[int(i), :]
+        aug[int(i), int(a_col)] = b[int(i)]
+    for i in range(int(0), int(a_row)):
+        max_row = i
+        for k in range(int((i + 1)), int(a_row)):
+            if torch.abs(aug[int(k), int(i)] if isinstance(aug[int(k), int(i)], torch.Tensor) else torch.tensor(float(aug[int(k), int(i)]))) > torch.abs(aug[int(max_row), int(i)] if isinstance(aug[int(max_row), int(i)], torch.Tensor) else torch.tensor(float(aug[int(max_row), int(i)]))):
+                max_row = k
+        if max_row != i:
+            lo = min(i, max_row)
+            hi = max(i, max_row)
+            rows_above = aug[:int(lo), :]
+            pivot_row = aug[int(hi):int((hi + 1)), :]
+            rows_between = aug[int((lo + 1)):int(hi), :]
+            current_row = aug[int(lo):int((lo + 1)), :]
+            rows_below = aug[int((hi + 1)):, :]
+            aug = torch.cat([rows_above, pivot_row, rows_between, current_row, rows_below])
+        pivot_row = aug[int(i):int((i + 1)), :]
+        pivot_value = aug[int(i), int(i)]
+        rows_below = aug[int((i + 1)):, :]
+        elimination_factors = (rows_below[:, int(i):int((i + 1))] / pivot_value)
+        eliminated_rows = (rows_below - (elimination_factors * pivot_row))
+        aug = torch.cat([aug[:int((i + 1)), :], eliminated_rows])
+    x = torch.zeros(int(0), device=DEVICE)
+    for i in range(int(0), int(a_row)):
+        idx = ((a_col - 1) - i)
+        total = aug[int(idx), int(a_col)]
+        for j in range(int((idx + 1)), int(a_row)):
+            total = (total - (aug[int(idx), int(j)] * x[int(((j - idx) - 1))]))
+        val = (total / aug[int(idx), int(idx)])
+        val = torch.reshape(val, (1,) if isinstance(1, int) else 1)
+        x = torch.cat([val, x])
+    return x
+
+def get_2d_array_num_rows(x):
+    total = 0
+    temp = 0
+    for i in range(len(x)):
+        temp = x[int(i)]
+        total = total + 1
+    return total
+
+def get_2d_array_num_cols(x, m=None, n=None):
+    if m is None:
+        m = int(x.shape[0])
+    if n is None:
+        n = int(x.shape[1])
+    return get_1d_array_length(x[int(0)])
+
+def get_1d_array_length(x):
+    total = 0
+    temp = 0
+    for i in range(len(x)):
+        temp = x[int(i)]
+        total = total + 1
+    return total
+
+def min(x, y):
+    if x < y:
+        return x
+    else:
+        return y
+
+def max(x, y):
+    if x > y:
+        return x
+    else:
+        return y
+
+def max_norm(v, n):
+    result = 0.0
+    for k in range(int(0), int(n)):
+        if torch.abs(v[int(k)] if isinstance(v[int(k)], torch.Tensor) else torch.tensor(float(v[int(k)]))) > result:
+            result = torch.abs(v[int(k)] if isinstance(v[int(k)], torch.Tensor) else torch.tensor(float(v[int(k)])))
+    return result
+
+def finite_values(v, n):
+    valid = 1.0
+    for k in range(int(0), int(n)):
+        if torch.abs(v[int(k)] if isinstance(v[int(k)], torch.Tensor) else torch.tensor(float(v[int(k)]))) <= 3.402823466e+38:
+            valid = valid
+        else:
+            valid = 0.0
+    return valid
+
+def initial_residual(u, x, t):
+    return ((dfn_algebraic(t, x, (u * z_scale)) / g_scale) * (newton_tolerance / algebraic_tolerance))
+
+def initial_component(u, x, t, k, na=None, nd=None):
+    if na is None:
+        na = int(u.shape[0])
+    if nd is None:
+        nd = int(x.shape[0])
+    r = initial_residual(u, x, t)
+    return r[int(k)]
+
+def initial_jacobian(u, x, t):
+    return torch.stack([compute_grad(lambda _du: initial_component(_du, x, t, q), u) for _fi_q in range(int(na)) for q in [torch.tensor(float(_fi_q), device=DEVICE)]])
+
+def consistent_potentials(x, guess, t):
+    tolerance = newton_tolerance
+    last_iteration = 20
+    u = (guess / z_scale)
+    active = 1.0
+    success = 0.0
+    iterations = 0.0
+    alpha = 1.0
+    found = 0.0
+    r = torch.zeros(int(na), device=DEVICE)
+    trial = torch.zeros(int(na), device=DEVICE)
+    delta = torch.zeros(int(na), device=DEVICE)
+    J = torch.zeros(int(na), int(na), device=DEVICE)
+    rnorm = 0.0
+    for iteration in range(int(0), int(21)):
+        if active > 0.0:
+            r = initial_residual(u, x, t)
+            if finite_values(r, na) > 0.0:
+                rnorm = max_norm(r, na)
+                if rnorm <= tolerance:
+                    success = 1.0
+                    active = 0.0
+                else:
+                    if iteration < last_iteration:
+                        J = initial_jacobian(u, x, t)
+                        iterations = (iterations + 1.0)
+                        delta = gaussian_solve(J, (-r))
+                        if finite_values(delta, na) > 0.0:
+                            alpha = 1.0
+                            found = 0.0
+                            for search in range(int(0), int(16)):
+                                if found < 1.0:
+                                    trial = initial_residual((u + (alpha * delta)), x, t)
+                                    if finite_values(trial, na) > 0.0:
+                                        if max_norm(trial, na) < rnorm:
+                                            found = 1.0
+                                    if found < 1.0:
+                                        alpha = (alpha * 0.5)
+                            if found > 0.0:
+                                u = (u + (alpha * delta))
+                            else:
+                                active = 0.0
+                        else:
+                            active = 0.0
+            else:
+                active = 0.0
+    return torch.cat([(u * z_scale), torch.stack([torch.as_tensor(success), torch.as_tensor(iterations)])])
+
+def step_residual(u, a, history, t, h, alpha):
+    y = (u * solver_scale)
+    increment = y[int(0):int(nd)]
+    z = y[int(nd):int(nb)]
+    x = (a + increment)
+    return torch.cat([((((alpha * increment) + history) - (h * dfn_rhs((t + h), x, z))) / x_scale), ((dfn_algebraic((t + h), x, z) / g_scale) * (newton_tolerance / algebraic_tolerance))])
+
+def step_component(u, a, history, t, h, alpha, k):
+    differential_size = nd
+    y = (u * solver_scale)
+    increment = y[int(0):int(nd)]
+    z = y[int(nd):int(nb)]
+    x = (a + increment)
+    r = torch.zeros(int(nd), device=DEVICE)
+    g = torch.zeros(int(na), device=DEVICE)
+    if k < differential_size:
+        r = ((((alpha * increment) + history) - (h * dfn_rhs((t + h), x, z))) / x_scale)
+    if k < differential_size:
+        return r[int(k)]
+    g = ((dfn_algebraic((t + h), x, z) / g_scale) * (newton_tolerance / algebraic_tolerance))
+    return g[int((k - nd))]
+
+def step_jacobian(u, a, history, t, h, alpha):
+    return torch.stack([compute_grad(lambda _du: step_component(_du, a, history, t, h, alpha, q), u) for _fi_q in range(int(nb)) for q in [torch.tensor(float(_fi_q), device=DEVICE)]])
+
+def step_newton(a, b, history, t, h, alpha):
+    tolerance = newton_tolerance
+    last_iteration = 20
+    u = (torch.cat([torch.zeros(int(nd), device=DEVICE), b]) / solver_scale)
+    active = 1.0
+    success = 0.0
+    iterations = 0.0
+    r = torch.zeros(int(nb), device=DEVICE)
+    delta = torch.zeros(int(nb), device=DEVICE)
+    defect = torch.zeros(int(nb), device=DEVICE)
+    tangent = torch.zeros(int(nb), device=DEVICE)
+    J = torch.zeros(int(nb), int(nb), device=DEVICE)
+    rnorm = 0.0
+    gnorm = 0.0
+    correction = 0.0
+    for iteration in range(int(0), int(21)):
+        if active > 0.0:
+            r = step_residual(u, a, history, t, h, alpha)
+            if finite_values(r, nb) > 0.0:
+                rnorm = max_norm(r, nb)
+                if rnorm <= tolerance:
+                    success = 1.0
+                    active = 0.0
+                else:
+                    if iteration < last_iteration:
+                        J = step_jacobian(u, a, history, t, h, alpha)
+                        iterations = (iterations + 1.0)
+                        delta = gaussian_solve(J, (-r))
+                        if finite_values(delta, nb) > 0.0:
+                            gnorm = max_norm(r[int(nd):int(nb)], na)
+                            correction = max_norm(delta[int(0):int(nd)], nd)
+                            if gnorm <= tolerance:
+                                if correction > tolerance:
+                                    defect = torch.cat([r[int(0):int(nd)], torch.zeros(int(na), device=DEVICE)])
+                                    tangent = gaussian_solve(J, (-defect))
+                                    if finite_values(tangent, nb) > 0.0:
+                                        correction = max_norm(tangent[int(0):int(nd)], nd)
+                                    else:
+                                        active = 0.0
+                                if correction <= tolerance:
+                                    success = 1.0
+                                    active = 0.0
+                            if active > 0.0:
+                                u = (u + delta)
+                        else:
+                            active = 0.0
+            else:
+                active = 0.0
+    return torch.cat([(u * solver_scale), torch.stack([torch.as_tensor(success), torch.as_tensor(iterations)])])
+
+def bdf_step(t, a, b, h, previous, previous_h, started):
+    alpha = 1.0
+    ratio = 0.0
+    history = torch.zeros(int(nd), device=DEVICE)
+    if started > 0.0:
+        ratio = (h / previous_h)
+        alpha = ((1.0 + (2.0 * ratio)) / (1.0 + ratio))
+        history = (((ratio ** 2) / (1.0 + ratio)) * (previous - a))
+    result = step_newton(a, b, history, t, h, alpha)
+    return torch.cat([(a + result[int(0):int(nd)]), result[int(nd):int(nb)], result[int(nb):int((nb + 2))]])
+
+def step_factor(error):
+    factor = 2.0
+    if error > 0.03:
+        factor = 1.6
+    if error > 0.2:
+        factor = 1.2
+    if error > 0.7:
+        factor = 0.95
+    return factor
+
+def attempt_step(t, x, z, h, previous, previous_h, started):
+    full = bdf_step(t, x, z, h, previous, previous_h, started)
+    half = torch.zeros(int((nb + 2)), device=DEVICE)
+    small = torch.zeros(int((nb + 2)), device=DEVICE)
+    success = 0.0
+    error = 2.0
+    count = full[int((nb + 1))]
+    a = full[int(0):int(nd)]
+    b = full[int(nd):int(nb)]
+    magnitude = torch.zeros(int(nd), device=DEVICE)
+    weight = torch.zeros(int(nd), device=DEVICE)
+    divisor = 1.0
+    if full[int(nb)] > 0.0:
+        half = bdf_step(t, x, z, (h / 2.0), previous, previous_h, started)
+        count = (count + half[int((nb + 1))])
+        if half[int(nb)] > 0.0:
+            small = bdf_step((t + (h / 2.0)), half[int(0):int(nd)], half[int(nd):int(nb)], (h / 2.0), x, (h / 2.0), 1.0)
+            count = (count + small[int((nb + 1))])
+            if small[int(nb)] > 0.0:
+                magnitude = (0.5 * ((torch.abs((a / x_scale) if isinstance((a / x_scale), torch.Tensor) else torch.tensor(float((a / x_scale)))) + torch.abs((x / x_scale) if isinstance((x / x_scale), torch.Tensor) else torch.tensor(float((x / x_scale))))) + torch.abs((torch.abs((a / x_scale) if isinstance((a / x_scale), torch.Tensor) else torch.tensor(float((a / x_scale)))) - torch.abs((x / x_scale) if isinstance((x / x_scale), torch.Tensor) else torch.tensor(float((x / x_scale))))) if isinstance((torch.abs((a / x_scale) if isinstance((a / x_scale), torch.Tensor) else torch.tensor(float((a / x_scale)))) - torch.abs((x / x_scale) if isinstance((x / x_scale), torch.Tensor) else torch.tensor(float((x / x_scale))))), torch.Tensor) else torch.tensor(float((torch.abs((a / x_scale) if isinstance((a / x_scale), torch.Tensor) else torch.tensor(float((a / x_scale)))) - torch.abs((x / x_scale) if isinstance((x / x_scale), torch.Tensor) else torch.tensor(float((x / x_scale))))))))))
+                weight = (absolute_tolerance + (relative_tolerance * magnitude))
+                if started > 0.0:
+                    divisor = 3.0
+                error = torch.sqrt((torch.sum(((((a - small[int(0):int(nd)]) / x_scale) / (divisor * weight)) ** 2) if isinstance(((((a - small[int(0):int(nd)]) / x_scale) / (divisor * weight)) ** 2), torch.Tensor) else torch.tensor(float(((((a - small[int(0):int(nd)]) / x_scale) / (divisor * weight)) ** 2)))) / nd) if isinstance((torch.sum(((((a - small[int(0):int(nd)]) / x_scale) / (divisor * weight)) ** 2) if isinstance(((((a - small[int(0):int(nd)]) / x_scale) / (divisor * weight)) ** 2), torch.Tensor) else torch.tensor(float(((((a - small[int(0):int(nd)]) / x_scale) / (divisor * weight)) ** 2)))) / nd), torch.Tensor) else torch.tensor(float((torch.sum(((((a - small[int(0):int(nd)]) / x_scale) / (divisor * weight)) ** 2) if isinstance(((((a - small[int(0):int(nd)]) / x_scale) / (divisor * weight)) ** 2), torch.Tensor) else torch.tensor(float(((((a - small[int(0):int(nd)]) / x_scale) / (divisor * weight)) ** 2)))) / nd))))
+                if error <= 1.0:
+                    success = 1.0
+    return torch.cat([a, b, torch.stack([torch.as_tensor(success), torch.as_tensor(error), torch.as_tensor(count)])])
+
+def integrate_dfn():
+    output = torch.zeros(int(82), int((nb + 1)), device=DEVICE)
+    x = x0
+    z = z0
+    previous = x0
+    initial = consistent_potentials(x, z, 0.0)
+    result = torch.zeros(int((nb + 3)), device=DEVICE)
+    root = torch.zeros(int((nb + 2)), device=DEVICE)
+    a = x0
+    b = z0
+    live = initial[int(na)]
+    status = (-1.0)
+    saved = 1
+    t = 0.0
+    h = 0.1
+    hh = 0.1
+    previous_h = 0.1
+    started = 0.0
+    stop = 0.0
+    interval_done = 0.0
+    retries = 0
+    retry_limit = 15
+    accepted = 0.0
+    rejected = 0.0
+    iterations = initial[int((na + 1))]
+    max_algebraic = 0.0
+    algebraic_norm = 0.0
+    algebraic_limit = (algebraic_tolerance * 1.01)
+    lo = 0.0
+    hi = 0.0
+    mid = 0.0
+    new_t = 0.0
+    root_ok = 1.0
+    if live > 0.0:
+        status = 0.0
+        z = initial[int(0):int(na)]
+        max_algebraic = max_norm((dfn_algebraic(0.0, x, z) / g_scale), na)
+    output[int(1), int(0)] = 0.0
+    output[int(1), int(1):int((nd + 1))] = x
+    output[int(1), int((nd + 1)):int((nb + 1))] = z
+    for point in range(int(1), int(81)):
+        if live > 0.0:
+            stop = (50.0 * point)
+            interval_done = 0.0
+            retries = 0
+            for attempt in range(int(0), int(10000)):
+                if interval_done < 1.0:
+                    hh = h
+                    if hh > (stop - t):
+                        hh = (stop - t)
+                    if hh < 1e-09:
+                        status = (-2.0)
+                        live = 0.0
+                        interval_done = 1.0
+                    if live > 0.0:
+                        result = attempt_step(t, x, z, hh, previous, previous_h, started)
+                        iterations = (iterations + result[int((nb + 2))])
+                        if result[int(nb)] > 0.0:
+                            a = result[int(0):int(nd)]
+                            b = result[int(nd):int(nb)]
+                            new_t = (t + hh)
+                            root_ok = 1.0
+                            if dfn_cutoff(new_t, a, b) <= 0.0:
+                                lo = 0.0
+                                hi = hh
+                                for bracket in range(int(0), int(32)):
+                                    if (hi - lo) > 1e-05:
+                                        if root_ok > 0.0:
+                                            mid = ((lo + hi) / 2.0)
+                                            root = bdf_step(t, x, z, mid, previous, previous_h, started)
+                                            iterations = (iterations + root[int((nb + 1))])
+                                            if root[int(nb)] > 0.0:
+                                                if dfn_cutoff((t + mid), root[int(0):int(nd)], root[int(nd):int(nb)]) <= 0.0:
+                                                    hi = mid
+                                                    a = root[int(0):int(nd)]
+                                                    b = root[int(nd):int(nb)]
+                                                else:
+                                                    lo = mid
+                                            else:
+                                                root_ok = 0.0
+                                new_t = (t + hi)
+                                if root_ok > 0.0:
+                                    status = 1.0
+                                    live = 0.0
+                                    interval_done = 1.0
+                            if root_ok > 0.0:
+                                previous = x
+                                previous_h = hh
+                                started = 1.0
+                                t = new_t
+                                x = a
+                                z = b
+                                accepted = (accepted + 1.0)
+                                retries = 0
+                                h = (hh * step_factor(result[int((nb + 1))]))
+                                if h > 50.0:
+                                    h = 50.0
+                                if t >= (stop - 1e-10):
+                                    interval_done = 1.0
+                            else:
+                                rejected = (rejected + 1.0)
+                                retries = (retries + 1)
+                                h = (hh / 2.0)
+                        else:
+                            rejected = (rejected + 1.0)
+                            retries = (retries + 1)
+                            h = (hh / 2.0)
+                        if retries > retry_limit:
+                            status = (-3.0)
+                            live = 0.0
+                            interval_done = 1.0
+                        if accepted >= 10000.0:
+                            status = (-4.0)
+                            live = 0.0
+                            interval_done = 1.0
+            if interval_done < 1.0:
+                status = (-5.0)
+                live = 0.0
+            if status >= 0.0:
+                saved = (saved + 1)
+                output[int(saved), int(0)] = t
+                output[int(saved), int(1):int((nd + 1))] = x
+                output[int(saved), int((nd + 1)):int((nb + 1))] = z
+                algebraic_norm = max_norm((dfn_algebraic(t, x, z) / g_scale), na)
+                if algebraic_norm > max_algebraic:
+                    max_algebraic = algebraic_norm
+                if algebraic_norm > algebraic_limit:
+                    status = (-6.0)
+                    live = 0.0
+                print(torch.stack([torch.as_tensor(t), torch.as_tensor(accepted), torch.as_tensor(rejected), torch.as_tensor(iterations)]))
+    output[int(0), int(0)] = saved
+    output[int(0), int(1)] = status
+    output[int(0), int(2)] = accepted
+    output[int(0), int(3)] = rejected
+    output[int(0), int(4)] = iterations
+    output[int(0), int(5)] = max_algebraic
+    output[int(0), int(6)] = initial[int((na + 1))]
+    return output
+
 # === Program ===
 nx_n = 5
 nx_s = 5
@@ -311,3 +726,9 @@ g_scale = torch.cat([gsn, gsp, gse])
 wn = particle_inventory(nx_n, nr_n, radius_n, (length_n / nx_n), active_n)
 wp = particle_inventory(nx_p, nr_p, radius_p, (length_p / nx_p), active_p)
 inventory_weights = torch.cat([wn, wp, (eps * width), torch.tensor([0.0], device=DEVICE)])
+nb = (nd + na)
+solver_scale = torch.cat([x_scale, z_scale])
+newton_tolerance = 2e-06
+algebraic_tolerance = 0.002
+relative_tolerance = 0.0001
+absolute_tolerance = 1e-06

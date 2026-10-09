@@ -17,25 +17,28 @@ From the repository root, with Physika and its dependencies installed:
 
    python tutorials/battery/run_dfn.py
 
-The command solves the model in float64, compares it with one saved PyBaMM
+The command solves the model in float32, compares it with one saved PyBaMM
 reference, and writes a trajectory, an error report and four figures to
 ``tutorials/battery/output/``. It requires no PyBaMM installation.
 Settings are explicit in the source: the experiment and mesh are in the
 main ``.phyk`` file, parameters are in ``battery/chen2020.phyk``, and time
-integration tolerances are in ``battery/dae.py``. There are no tutorial CLI
+integration tolerances are in ``battery/dae.phyk``. There are no tutorial CLI
 options.
 
-Read the main Physika file alongside the equations below. Its two imports
-contain constitutive laws and conservative spatial operators. Python
-supplies stiff time integration, plotting, and access to the external
-reference library. The tutorial uses the unchanged Physika core and does not
-replace any Physika functions or rewrite the model or its generated code.
+Read the main Physika file alongside the equations below. Its imports
+contain constitutive laws, conservative spatial operators, the existing
+Gaussian elimination solver and the tutorial's time integrator.
+Python compiles the source, calls the
+integrator, compares the saved reference and plots results. Reference
+generation is a separate development script. All physics, time integration
+and linear solves are written in Physika; this tutorial requires no core
+extensions.
 The small elementary helpers are defined in ``chen2020.phyk`` with existing
 Physika operations. Their branches enforce concentration bounds and stable
-evaluation during Newton trials. The runner selects Torch's default float64
+evaluation during Newton trials. The runner selects Torch's default float32
 dtype before compiling through the existing parser, type checker and AST
 code generator. Running the ``.phyk`` file directly defines
-the equations; the Python runner performs their time integration.
+the equations and solver; the Python runner calls ``integrate_dfn()``.
 
 Particle diffusion and reaction
 -------------------------------
@@ -130,10 +133,12 @@ Time integration
 ----------------
 
 The compiled equations form the semi-explicit DAE
-:math:`\dot y=f(t,y,z),\;0=g(t,y,z)`. Physika currently lacks the stiff DAE
-integration and matrix linear-solve interfaces needed here, so the small
-Python integrator uses Torch autodiff Jacobians and dense Newton solves.
-It uses backward Euler for startup, then adaptive variable-step BDF2.
+:math:`\dot y=f(t,y,z),\;0=g(t,y,z)`. The tutorial-local ``dae.phyk`` implements
+backward Euler for startup, then adaptive variable-step BDF2. It builds
+Newton Jacobians with existing scalar ``grad`` calls, one row at a time,
+and solves the resulting systems with ``gaussian_solve`` from the existing
+:doc:`Gaussian elimination tutorial <linear_solve_gaussian_elimination>`.
+That solver uses partial pivoting and is imported with its helper functions.
 Step doubling estimates concentration error; failed Newton solves or error
 tests reduce the step. Algebraic consistency is checked separately.
 
@@ -142,7 +147,18 @@ Newton line search. A bracketed sequence of implicit solves locates the
 2.5 V cutoff. These conditionals implement the selected numerical method.
 The integrator contains no alternative methods, switching protocols,
 precision modes, backend selection or optional internal-step storage.
-Accepted states are detached; autodiff serves Newton's method here.
+Autodiff serves Newton's method here. Bounded loops and success flags express
+iteration with the existing language syntax, and a fixed tensor buffer
+stores the trajectory and solver statistics.
+
+The selected float32 tolerances are :math:`10^{-4}` relative and
+:math:`10^{-6}` absolute for scaled differential states, :math:`2\times10^{-6}`
+for Newton convergence, and :math:`2\times10^{-3}` for scaled algebraic
+constraints. The step controller chooses among four scalar factors so that
+time arithmetic does not accumulate float32 tensor roundoff. These solver
+settings were adjusted for float32; the scientific acceptance limits below
+were kept unchanged. Reusing the stricter float64 tolerances caused many
+retries and took 913 s in the Python float32 solver.
 
 One reference comparison
 ------------------------
@@ -168,7 +184,9 @@ as spatial profiles at the same physical time. Acceptance limits are:
 
 The runner reports separate errors for each field and exits unsuccessfully
 if any criterion fails. Tests additionally check finite-volume conservation,
-Jacobian accuracy and the integrator's convergence and cutoff location.
+row-wise Jacobian agreement with vectorized autodiff, consistent
+initialization and implicit stepping. The standalone runner test checks the
+full discharge and reference comparison with PyBaMM imports disabled.
 This comparison checks implementation agreement on a common coarse mesh;
 it does not establish spatial mesh convergence or experimental accuracy.
 
@@ -188,11 +206,31 @@ electrode cell in each electrode; quantitative checks cover all particles.
 .. image:: ../_static/dfn_validation/particles.png
    :alt: Radial concentration profiles in representative particles
 
-The fixed demonstration measured 0.044 mV maximum voltage error,
-0.052 mV maximum potential error, and 0.121% maximum scaled concentration
-error. Cutoff occurred at approximately 3558.196 s, within 0.002 s of the
-reference. The checked-in ``demonstration.json`` records the complete run;
-wall time depends on the machine.
+The float32 Physika demonstration measured 0.119 mV maximum voltage error,
+0.119 mV maximum potential error, and 0.537% maximum scaled concentration
+error (in the electrolyte). Cutoff occurred at approximately 3558.189 s,
+within 0.006 s of the reference. Relative lithium inventory drift was
+:math:`5.92\times10^{-7}` and the maximum saved scaled algebraic residual
+was :math:`2.97\times10^{-4}`. All acceptance limits passed.
+
+On the same machine with one Torch CPU thread, the complete Physika
+integration took 475 s (7.9 minutes). A Python float32 solver with the same
+tolerances and step controller took 54 s; both accepted 126 steps with no
+rejections. The Physika implementation was 8.7 times slower. The previous
+Python float64 demonstration took 72 s with its original stricter settings,
+and had 0.044 mV voltage error and 0.121% maximum concentration error.
+An earlier Torch-backed linear-solve experiment took 428 s with essentially
+the same errors. Reusing the existing Physika Gaussian solver added about
+11% to the measured runtime and allowed the core additions to be removed.
+
+Row-by-row autodiff is the main performance limitation: it repeatedly
+evaluates residual blocks instead of forming a vectorized Jacobian.
+Using ``grad`` on a vector residual currently gives the wrong inferred
+shape for this use, so this demonstration uses the existing scalar path
+without changing core gradient inference. Float32 meets the demonstration's
+accuracy requirements, but moving the solver into Physika currently costs
+runtime. The :download:`Gaussian benchmark report <../_static/dfn_validation/gaussian_benchmark.json>`
+records the measured runs and settings; wall time depends on the machine.
 
 To regenerate the reference during development, install the PyBaMM
 version recorded in its metadata, then run:

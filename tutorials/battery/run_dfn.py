@@ -1,12 +1,17 @@
 """Run the fixed Physika DFN demonstration and compare its saved reference.
 
 From the repository root: python tutorials/battery/run_dfn.py
-Edit the .phyk model and dae.py directly to change the experiment.
+The complete integrator is in battery/dae.phyk; Python compiles and plots.
 """
 
 import json
 from pathlib import Path
 import sys
+import time
+from types import SimpleNamespace
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 
 import numpy as np
 import torch
@@ -17,21 +22,18 @@ from physika.parser import parser, symbol_table
 from physika.type_checker import TypeChecker
 from physika.utils.ast_utils import build_unified_ast
 from physika.utils.import_manager import resolve_imports
-from tutorials.battery.dae import integrate
+import physika.runtime
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
 
 MODEL = ROOT / "tutorials/doyle_fuller_newman.phyk"
 REFERENCE = ROOT / "tests/reference/chen2020_discharge_5.npz"
 OUTPUT = ROOT / "tutorials/battery/output"
-TIMES = np.arange(0.0, 4001.0, 50.0)
 SNAPSHOTS = (100.0, 1500.0, 3000.0)
 
 
 def load_model():
     """Compile the unmodified Physika source through the standard compiler."""
-    torch.set_default_dtype(torch.float64)
+    torch.set_default_dtype(torch.float32)
     symbol_table.clear()
     lexer.lexer.lineno = 1
     nodes = resolve_imports(parser.parse(MODEL.read_text(), lexer=lexer), MODEL)
@@ -39,9 +41,30 @@ def load_model():
     errors = TypeChecker(ast).run()
     if errors:
         raise TypeError("\n".join(errors))
-    model = {}
+    model = dict(vars(physika.runtime))
     exec(from_ast_to_torch(ast, print_code=False), model)
     return model
+
+
+def solve_model(model):
+    """Call the Physika integrator; unpack its fixed trajectory buffer."""
+    started = time.perf_counter()
+    packed = model["integrate_dfn"]()
+    elapsed = time.perf_counter() - started
+    count, status = int(packed[0, 0]), int(packed[0, 1])
+    if status < 0:
+        raise RuntimeError(f"Physika DFN integration failed with status {status}")
+    rows = packed[1:count + 1]
+    stats = dict(accepted_steps=int(packed[0, 2]),
+                 rejected_steps=int(packed[0, 3]),
+                 newton_iterations=int(packed[0, 4]),
+                 max_algebraic_residual=float(packed[0, 5]),
+                 initialization_iterations=int(packed[0, 6]),
+                 elapsed_seconds=elapsed)
+    return SimpleNamespace(times=rows[:, 0].double(),
+                           differential=rows[:, 1:model["nd"] + 1],
+                           algebraic=rows[:, model["nd"] + 1:],
+                           reached_cutoff=status == 1, stats=stats)
 
 
 def fields(model, solution):
@@ -128,6 +151,14 @@ def compare(model, solution, native, reference):
         inventory_drift_relative=drift,
         termination_time_s=float(solution.times[-1]),
         stats=solution.stats,
+        precision="float32",
+        solver_settings=dict(rtol=model["relative_tolerance"],
+                             atol=model["absolute_tolerance"],
+                             newton_tolerance=model["newton_tolerance"],
+                             algebraic_tolerance=model["algebraic_tolerance"],
+                             jacobian="row-by-row scalar grad",
+                             linear_solver="Physika gaussian_solve (partial pivoting)",
+                             controller="quantized step-doubling controller"),
     )
 
 
@@ -262,7 +293,7 @@ def plot_profiles(solution, native, reference):
 def main():
     torch.set_num_threads(1)
     model = load_model()
-    solution = integrate(model, TIMES)
+    solution = solve_model(model)
     native = fields(model, solution)
     with np.load(REFERENCE) as reference:
         report = compare(model, solution, native, reference)
