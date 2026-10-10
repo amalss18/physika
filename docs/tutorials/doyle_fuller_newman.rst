@@ -15,11 +15,26 @@ From the repository root, with Physika and its dependencies installed:
 
 .. code-block:: bash
 
-   python tutorials/battery/run_dfn.py
+   physika tutorials/doyle_fuller_newman.phyk
 
-The command solves the model in float32, compares it with one saved PyBaMM
-reference, and writes a trajectory, an error report and four figures to
-``tutorials/battery/output/``. It requires no PyBaMM installation.
+The Physika program runs the fixed float32 discharge and prints selected
+voltage and discharged-capacity predictions, followed by the cutoff state.
+For this experiment the output is approximately:
+
+.. code-block:: text
+
+   time [s]     voltage [V]     discharged capacity [Ah]
+      0.000        4.039845              0.000000
+    100.000        3.944633              0.138889
+   1500.000        3.578698              2.083333
+   3000.000        3.228921              4.166667
+   3558.189        2.500000              4.941929  (cutoff)
+
+The complete trajectory, reconstructed physical fields and inventory drift
+are retained as ``trajectory``, ``prediction_fields`` and ``inventory_drift``
+inside the program. It prints only these representative predictions.
+Executing the tutorial requires neither PyBaMM nor a battery-specific Python
+runner. The full discharge takes several minutes on a CPU.
 Settings are explicit in the source: the experiment and mesh are in the
 main ``.phyk`` file, parameters are in ``battery/chen2020.phyk``, and time
 integration tolerances are in ``battery/dae.phyk``. There are no tutorial CLI
@@ -28,17 +43,16 @@ options.
 Read the main Physika file alongside the equations below. Its imports
 contain constitutive laws, conservative spatial operators, the existing
 Gaussian elimination solver and the tutorial's time integrator.
-Python compiles the source, calls the
-integrator, compares the saved reference and plots results. Reference
-generation is a separate development script. All physics, time integration
+All physics, time integration, physical field reconstruction
 and linear solves are written in Physika; this tutorial requires no core
 extensions.
 The small elementary helpers are defined in ``chen2020.phyk`` with existing
 Physika operations. Their branches enforce concentration bounds and stable
-evaluation during Newton trials. The runner selects Torch's default float32
-dtype before compiling through the existing parser, type checker and AST
-code generator. Running the ``.phyk`` file directly defines
-the equations and solver; the Python runner calls ``integrate_dfn()``.
+evaluation during Newton trials. The final statements call ``integrate_dfn()``,
+reconstruct the physical fields, check lithium inventory and display the
+selected predictions. The validation figures below are generated during
+development and published as static documentation assets; plot-generation
+tools are not part of the public tutorial.
 
 Particle diffusion and reaction
 -------------------------------
@@ -166,8 +180,8 @@ One reference comparison
 The saved ``tests/reference/chen2020_discharge_5.npz`` contains a tightly
 solved PyBaMM BasicDFN trajectory on the same mesh. Its companion JSON
 records parameters, initial concentrations, version, tolerances, potential
-reference and regeneration command. The reference is generated once;
-normal demonstration runs read it locally.
+reference and generation provenance. The reference is generated during
+development; executing the Physika tutorial does not read it.
 
 Voltage, every concentration field and all physical potential fields are
 compared at every common saved time and spatial point, spaced 50 s apart.
@@ -182,11 +196,12 @@ as spatial profiles at the same physical time. Acceptance limits are:
 * relative lithium inventory drift: :math:`10^{-4}`;
 * maximum scaled algebraic residual: :math:`2\times10^{-3}`.
 
-The runner reports separate errors for each field and exits unsuccessfully
-if any criterion fails. Tests additionally check finite-volume conservation,
+The published validation report records separate errors for each field.
+Automated tests execute the complete native tutorial once and check the
+trajectory against this saved reference without importing PyBaMM.
+Fast component tests additionally check finite-volume conservation,
 row-wise Jacobian agreement with vectorized autodiff, consistent
-initialization and implicit stepping. The standalone runner test checks the
-full discharge and reference comparison with PyBaMM imports disabled.
+initialization and implicit stepping.
 This comparison checks implementation agreement on a common coarse mesh;
 it does not establish spatial mesh convergence or experimental accuracy.
 
@@ -232,12 +247,10 @@ accuracy requirements, but moving the solver into Physika currently costs
 runtime. The :download:`Gaussian benchmark report <../_static/dfn_validation/gaussian_benchmark.json>`
 records the measured runs and settings; wall time depends on the machine.
 
-To regenerate the reference during development, install the PyBaMM
-version recorded in its metadata, then run:
-
-.. code-block:: bash
-
-   python tutorials/battery/generate_dfn_reference.py
+The reference metadata records the PyBaMM version, Chen2020 parameters,
+initial concentrations, spatial mesh and IDAKLU tolerances. The
+:download:`validation report <../_static/dfn_validation/demonstration.json>`
+and the reference data are retained alongside the published figures.
 
 The model source
 ----------------
