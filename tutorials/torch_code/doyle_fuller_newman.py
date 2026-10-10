@@ -252,14 +252,16 @@ def gaussian_solve(A, b):
     a_col = get_2d_array_num_cols(A)
     new_col = (a_col + 1)
     aug = torch.zeros(int(a_row), int(new_col), device=DEVICE)
-    for i in range(int(0), int(a_row)):
-        aug[int(i), :int(a_col)] = A[int(i), :]
-        aug[int(i), int(a_col)] = b[int(i)]
+    aug[:, :int(a_col)] = A
+    aug[:, int(a_col)] = b
     for i in range(int(0), int(a_row)):
         max_row = i
+        magnitudes = torch.abs(aug[int(i):, int(i)] if isinstance(aug[int(i):, int(i)], torch.Tensor) else torch.tensor(float(aug[int(i):, int(i)])))
+        largest = magnitudes[int(0)]
         for k in range(int((i + 1)), int(a_row)):
-            if torch.abs(aug[int(k), int(i)] if isinstance(aug[int(k), int(i)], torch.Tensor) else torch.tensor(float(aug[int(k), int(i)]))) > torch.abs(aug[int(max_row), int(i)] if isinstance(aug[int(max_row), int(i)], torch.Tensor) else torch.tensor(float(aug[int(max_row), int(i)]))):
+            if magnitudes[int((k - i))] > largest:
                 max_row = k
+                largest = magnitudes[int((k - i))]
         if max_row != i:
             lo = min(i, max_row)
             hi = max(i, max_row)
@@ -278,9 +280,7 @@ def gaussian_solve(A, b):
     x = torch.zeros(int(0), device=DEVICE)
     for i in range(int(0), int(a_row)):
         idx = ((a_col - 1) - i)
-        total = aug[int(idx), int(a_col)]
-        for j in range(int((idx + 1)), int(a_row)):
-            total = (total - (aug[int(idx), int(j)] * x[int(((j - idx) - 1))]))
+        total = (aug[int(idx), int(a_col)] - torch.sum((aug[int(idx), int((idx + 1)):int(a_col)] * x) if isinstance((aug[int(idx), int((idx + 1)):int(a_col)] * x), torch.Tensor) else torch.tensor(float((aug[int(idx), int((idx + 1)):int(a_col)] * x)))))
         val = (total / aug[int(idx), int(idx)])
         val = torch.reshape(val, (1,) if isinstance(1, int) else 1)
         x = torch.cat([val, x])
@@ -349,7 +349,8 @@ def initial_component(u, x, t, k, na=None, nd=None):
     return r[int(k)]
 
 def initial_jacobian(u, x, t):
-    return torch.stack([compute_grad(lambda _du: initial_component(_du, x, t, q), u) for _fi_q in range(int(na)) for q in [torch.tensor(float(_fi_q), device=DEVICE)]])
+    shape = [na, na]
+    return torch.reshape(compute_grad(lambda _du: initial_residual(_du, x, t), u), (shape,) if isinstance(shape, int) else shape)
 
 def consistent_potentials(x, guess, t):
     tolerance = newton_tolerance
@@ -422,7 +423,8 @@ def step_component(u, a, history, t, h, alpha, k):
     return g[int((k - nd))]
 
 def step_jacobian(u, a, history, t, h, alpha):
-    return torch.stack([compute_grad(lambda _du: step_component(_du, a, history, t, h, alpha, q), u) for _fi_q in range(int(nb)) for q in [torch.tensor(float(_fi_q), device=DEVICE)]])
+    shape = [nb, nb]
+    return torch.reshape(compute_grad(lambda _du: step_residual(_du, a, history, t, h, alpha), u), (shape,) if isinstance(shape, int) else shape)
 
 def step_newton(a, b, history, t, h, alpha):
     tolerance = newton_tolerance

@@ -25,27 +25,27 @@ For this experiment the output is approximately:
 
    time [s]     voltage [V]     discharged capacity [Ah]
       0.000        4.039845              0.000000
-    100.000        3.944633              0.138889
+    100.000        3.944634              0.138889
    1500.000        3.578698              2.083333
    3000.000        3.228921              4.166667
-   3558.189        2.500000              4.941929  (cutoff)
+   3558.189        2.500000              4.941930  (cutoff)
 
 The complete trajectory, reconstructed physical fields and inventory drift
 are retained as ``trajectory``, ``prediction_fields`` and ``inventory_drift``
 inside the program. It prints only these representative predictions.
 Executing the tutorial requires neither PyBaMM nor a battery-specific Python
-runner. The full discharge takes several minutes on a CPU.
+runner. Runtime measurements are reported below.
 Settings are explicit in the source: the experiment and mesh are in the
 main ``.phyk`` file, parameters are in ``battery/chen2020.phyk``, and time
 integration tolerances are in ``battery/dae.phyk``. There are no tutorial CLI
 options.
 
 Read the main Physika file alongside the equations below. Its imports
-contain constitutive laws, conservative spatial operators, the existing
+contain constitutive laws, conservative spatial operators, the DFN-local
 Gaussian elimination solver and the tutorial's time integrator.
 All physics, time integration, physical field reconstruction
-and linear solves are written in Physika; this tutorial requires no core
-extensions.
+and linear solves are written in Physika. The runtime's vector-valued
+``grad`` operation supplies the Newton Jacobians.
 The small elementary helpers are defined in ``chen2020.phyk`` with existing
 Physika operations. Their branches enforce concentration bounds and stable
 evaluation during Newton trials. The final statements call ``integrate_dfn()``,
@@ -149,10 +149,11 @@ Time integration
 The compiled equations form the semi-explicit DAE
 :math:`\dot y=f(t,y,z),\;0=g(t,y,z)`. The tutorial-local ``dae.phyk`` implements
 backward Euler for startup, then adaptive variable-step BDF2. It builds
-Newton Jacobians with existing scalar ``grad`` calls, one row at a time,
-and solves the resulting systems with ``gaussian_solve`` from the existing
-:doc:`Gaussian elimination tutorial <linear_solve_gaussian_elimination>`.
-That solver uses partial pivoting and is imported with its helper functions.
+Newton Jacobians with one vector-valued ``grad`` call per residual,
+and solves the resulting systems with ``gaussian_solve`` from
+``battery/gaussian_elimination.phyk``. This DFN-local version of the
+:doc:`Gaussian elimination tutorial <linear_solve_gaussian_elimination>`
+solver uses partial pivoting and is imported with its helper functions.
 Step doubling estimates concentration error; failed Newton solves or error
 tests reduce the step. Algebraic consistency is checked separately.
 
@@ -200,7 +201,7 @@ The published validation report records separate errors for each field.
 Automated tests execute the complete native tutorial once and check the
 trajectory against this saved reference without importing PyBaMM.
 Fast component tests additionally check finite-volume conservation,
-row-wise Jacobian agreement with vectorized autodiff, consistent
+vector-valued Jacobian agreement with scalar-row autodiff, consistent
 initialization and implicit stepping.
 This comparison checks implementation agreement on a common coarse mesh;
 it does not establish spatial mesh convergence or experimental accuracy.
@@ -221,35 +222,79 @@ electrode cell in each electrode; quantitative checks cover all particles.
 .. image:: ../_static/dfn_validation/particles.png
    :alt: Radial concentration profiles in representative particles
 
-The float32 Physika demonstration measured 0.119 mV maximum voltage error,
+The updated float32 Physika demonstration measured 0.120 mV maximum voltage error,
 0.119 mV maximum potential error, and 0.537% maximum scaled concentration
 error (in the electrolyte). Cutoff occurred at approximately 3558.189 s,
 within 0.006 s of the reference. Relative lithium inventory drift was
-:math:`5.92\times10^{-7}` and the maximum saved scaled algebraic residual
-was :math:`2.97\times10^{-4}`. All acceptance limits passed.
+:math:`6.77\times10^{-7}` and the maximum saved scaled algebraic residual
+was :math:`3.09\times10^{-4}`. All acceptance limits passed. The figures
+above show the earlier implementation; the updated voltage trajectory
+differs by at most 2.63 microvolts at the common saved times.
 
-On the same machine with one Torch CPU thread, the complete Physika
-integration took 475 s (7.9 minutes). A Python float32 solver with the same
-tolerances and step controller took 54 s; both accepted 126 steps with no
-rejections. The Physika implementation was 8.7 times slower. The previous
-Python float64 demonstration took 72 s with its original stricter settings,
-and had 0.044 mV voltage error and 0.121% maximum concentration error.
-An earlier Torch-backed linear-solve experiment took 428 s with essentially
-the same errors. Reusing the existing Physika Gaussian solver added about
-11% to the measured runtime and allowed the core additions to be removed.
+Runtime improvements
+--------------------
 
-Row-by-row autodiff is the main performance limitation: it repeatedly
-evaluates residual blocks instead of forming a vectorized Jacobian.
-Using ``grad`` on a vector residual currently gives the wrong inferred
-shape for this use, so this demonstration uses the existing scalar path
-without changing core gradient inference. Float32 meets the demonstration's
-accuracy requirements, but moving the solver into Physika currently costs
-runtime. The :download:`Gaussian benchmark report <../_static/dfn_validation/gaussian_benchmark.json>`
-records the measured runs and settings; wall time depends on the machine.
+Two changes reduce the forward-solve cost while retaining the same mesh,
+float32 precision, equations, time integration and tolerances:
+
+* ``grad(residual(u),u)`` now forms the whole Newton Jacobian through the
+  runtime's existing vector-valued autodiff path. The tutorial explicitly
+  reshapes the result to ``[na,na]`` or ``[nb,nb]`` to state its matrix
+  dimensions despite the current gradient type-inference limitation.
+  No Physika core changes are required.
+* ``gaussian_solve`` now copies the augmented matrix in blocks, caches the
+  pivot-column magnitudes, and uses tensor reductions for back substitution.
+  The algorithm and partial-pivoting rule remain the same. This optimized
+  version lives in ``battery/gaussian_elimination.phyk``; the Gaussian and
+  Helmholtz tutorials retain their original source and snapshots.
+
+On the same machine with one Torch CPU thread, sequential full CLI runs
+measured **491.7 s before** and **42.2 s after**, an **11.64-fold speedup**
+and a 91.4% runtime reduction. These timings include compilation,
+initialization, integration, cutoff location and field reconstruction.
+Both runs accepted 126 steps with no rejections. Small changes in float32
+rounding increased Newton corrections from 1190 to 1216; the cutoff times
+differed by 0.000244 s. Both runs passed all reference checks.
+The tutorial-only version also reproduced the preceding improved run's
+trajectory and reconstructed fields exactly, after removing its core edits.
+
+Repeated warm timings of the 91-by-91 Newton kernels gave:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 25 25 15
+
+   * - Kernel
+     - Before
+     - After
+     - Speedup
+   * - Jacobian
+     - 324–325 ms
+     - 16.0–16.5 ms
+     - 19.6–20.3 times
+   * - Gaussian solve
+     - 43.7–44.3 ms
+     - 7.62–7.63 ms
+     - 5.74–5.81 times
+
+These kernels were measured at the initial state and at 1500 s using seven
+Jacobian repeats and eleven Gaussian repeats with alternating comparison
+order. The Jacobians agreed exactly at both sampled states. A startup
+attempt measured 1.249 s before, 0.333 s with the vector Jacobian alone,
+and 0.120 s with both improvements; its error estimate and iteration count
+were unchanged.
+
+The :download:`performance report <../_static/dfn_validation/performance_improvements.json>`
+records the environment, timings, numerical errors and verification.
+Full-discharge timings are single runs, while kernel timings are warm
+medians; wall time depends on hardware and system load. These measurements
+cover the fixed 5 A discharge. The
+:download:`earlier Gaussian benchmark report <../_static/dfn_validation/gaussian_benchmark.json>`
+retains the historical development measurements.
 
 The reference metadata records the PyBaMM version, Chen2020 parameters,
 initial concentrations, spatial mesh and IDAKLU tolerances. The
-:download:`validation report <../_static/dfn_validation/demonstration.json>`
+:download:`earlier validation report <../_static/dfn_validation/demonstration.json>`
 and the reference data are retained alongside the published figures.
 
 The model source

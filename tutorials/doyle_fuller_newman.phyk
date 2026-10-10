@@ -151,7 +151,7 @@ def dfn_cutoff(t: ℝ, x: ℝ[nd], z: ℝ[na]): ℝ:
 # Tutorial-local float32 BDF2 integration.
 nb: ℕ = nd+na
 solver_scale: ℝ[nb] = concat(x_scale,z_scale)
-from tutorials.linear_solve_gaussian_elimination import gaussian_solve, get_2d_array_num_rows, get_2d_array_num_cols, get_1d_array_length, min, max
+from tutorials.battery.gaussian_elimination import gaussian_solve, get_2d_array_num_rows, get_2d_array_num_cols, get_1d_array_length, min, max
 from tutorials.battery.dae import newton_tolerance, algebraic_tolerance, relative_tolerance, absolute_tolerance, max_norm, finite_values, initial_residual, initial_component, initial_jacobian, consistent_potentials, step_residual, step_component, step_jacobian, step_newton, bdf_step, step_factor, attempt_step, integrate_dfn
 
 # Reconstruct physical outputs from the saved differential/algebraic states.

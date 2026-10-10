@@ -31,7 +31,10 @@ def initial_component(u: ℝ[na], x: ℝ[nd], t: ℝ, k: ℕ): ℝ:
     return r[k]
 
 def initial_jacobian(u: ℝ[na], x: ℝ[nd], t: ℝ): ℝ[na,na]:
-    return for q:ℕ(na) -> grad(initial_component(u,x,t,q),u)
+    # The runtime already returns a Jacobian; state its matrix shape here
+    # because the current grad type inference reports only the input shape.
+    shape: list = [na,na]
+    return reshape(grad(initial_residual(u,x,t),u),shape)
 
 # Pack the state, a success flag, and the number of Newton corrections.
 def consistent_potentials(x: ℝ[nd], guess: ℝ[na], t: ℝ): ℝ[na+2]:
@@ -106,7 +109,8 @@ def step_component(u: ℝ[nb], a: ℝ[nd], history: ℝ[nd], t: ℝ, h: ℝ, alp
     return g[k-nd]
 
 def step_jacobian(u: ℝ[nb], a: ℝ[nd], history: ℝ[nd], t: ℝ, h: ℝ, alpha: ℝ): ℝ[nb,nb]:
-    return for q:ℕ(nb) -> grad(step_component(u,a,history,t,h,alpha,q),u)
+    shape: list = [nb,nb]
+    return reshape(grad(step_residual(u,a,history,t,h,alpha),u),shape)
 
 def step_newton(a: ℝ[nd], b: ℝ[na], history: ℝ[nd], t: ℝ, h: ℝ, alpha: ℝ): ℝ[nb+2]:
     tolerance: ℝ = newton_tolerance
