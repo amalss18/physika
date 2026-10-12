@@ -80,6 +80,86 @@ def modification_matrix():
 def property_budget(theta):
     return ((((theta[int(0):int(6)] @ budget_matrix) @ theta[int(0):int(6)]) + ((theta[int(6):int(12)] @ budget_matrix) @ theta[int(6):int(12)])) + ((theta[int(12)] ** 2) / 3.0))
 
+def project_budget(v):
+    identity = budget_identity
+    hessian = budget_hessian
+    target = ((modification_budget ** 2) * (1.0 - 8e-07))
+    result = v
+    low = 0.0
+    high = 1.0
+    middle = 0.0
+    candidate = v
+    if property_budget(v) <= target:
+        return torch.cat([v, torch.tensor([1.0], device=DEVICE)])
+    result = gaussian_solve((identity + ((2.0 * high) * hessian)), v)
+    for bracket in range(int(0), int(32)):
+        if property_budget(result) > target:
+            high = (2.0 * high)
+            result = gaussian_solve((identity + ((2.0 * high) * hessian)), v)
+    if property_budget(result) > target:
+        return torch.cat([result, torch.tensor([0.0], device=DEVICE)])
+    for search in range(int(0), int(32)):
+        middle = (0.5 * (low + high))
+        candidate = gaussian_solve((identity + ((2.0 * middle) * hessian)), v)
+        if property_budget(candidate) > target:
+            low = middle
+        else:
+            high = middle
+            result = candidate
+    return torch.cat([result, torch.tensor([1.0], device=DEVICE)])
+
+def project_design(v):
+    x = v
+    y = minimum(maximum(v, (-1.0)), 1.0)
+    old = v
+    box_correction = torch.zeros(int(n_parameters), device=DEVICE)
+    budget_correction = torch.zeros(int(n_parameters), device=DEVICE)
+    ellipse = torch.zeros(int((n_parameters + 1)), device=DEVICE)
+    change = 1.0
+    live = 1.0
+    status = 0.0
+    if property_budget(y) <= ((modification_budget ** 2) * (1.0 - 8e-07)):
+        return torch.cat([y, torch.tensor([1.0], device=DEVICE)])
+    for cycle in range(int(0), int(128)):
+        if live > 0.0:
+            old = x
+            y = minimum(maximum((x + box_correction), (-1.0)), 1.0)
+            box_correction = ((x + box_correction) - y)
+            ellipse = project_budget((y + budget_correction))
+            x = ellipse[int(0):int(n_parameters)]
+            budget_correction = ((y + budget_correction) - x)
+            change = max(max_norm((x - old), n_parameters), max_norm((x - y), n_parameters))
+            if ellipse[int(n_parameters)] < 1.0:
+                live = 0.0
+            if change <= 2e-07:
+                live = 0.0
+                status = 1.0
+    x = minimum(maximum(x, (-1.0)), 1.0)
+    if property_budget(x) > ((modification_budget ** 2) * (1.0 - 8e-07)):
+        x = (x * torch.sqrt((((modification_budget ** 2) * (1.0 - 8e-07)) / property_budget(x)) if isinstance((((modification_budget ** 2) * (1.0 - 8e-07)) / property_budget(x)), torch.Tensor) else torch.tensor(float((((modification_budget ** 2) * (1.0 - 8e-07)) / property_budget(x))))))
+    return torch.cat([x, torch.stack([torch.as_tensor(status)])])
+
+def constrained_stationarity(theta, gradient):
+    hessian = budget_hessian
+    projection = project_design((theta - gradient))
+    budget_gradient = torch.zeros(int(n_parameters), device=DEVICE)
+    for row in range(int(0), int(n_parameters)):
+        budget_gradient[int(row)] = (2.0 * torch.sum((hessian[int(row), :] * theta) if isinstance((hessian[int(row), :] * theta), torch.Tensor) else torch.tensor(float((hessian[int(row), :] * theta)))))
+    free_gradient = (gradient + torch.zeros(int(n_parameters), device=DEVICE))
+    free_budget = (budget_gradient + torch.zeros(int(n_parameters), device=DEVICE))
+    multiplier = 0.0
+    slack = ((modification_budget ** 2) - property_budget(theta))
+    residual = torch.zeros(int(n_parameters), device=DEVICE)
+    for parameter in range(int(0), int(n_parameters)):
+        if torch.abs(theta[int(parameter)] if isinstance(theta[int(parameter)], torch.Tensor) else torch.tensor(float(theta[int(parameter)]))) >= (1.0 - 1e-06):
+            free_gradient[int(parameter)] = 0.0
+            free_budget[int(parameter)] = 0.0
+    if slack <= 1e-06:
+        if (free_budget @ free_budget) > 1e-12:
+            multiplier = max(0.0, ((-(free_gradient @ free_budget)) / (free_budget @ free_budget)))
+    residual = (theta - minimum(maximum(((theta - gradient) - (multiplier * budget_gradient)), (-1.0)), 1.0))
+    return torch.stack([torch.as_tensor(max_norm((theta - projection[int(0):int(n_parameters)]), n_parameters)), torch.as_tensor(multiplier), torch.as_tensor(slack), torch.as_tensor(max_norm(residual, n_parameters)), torch.as_tensor(torch.abs((multiplier * slack) if isinstance((multiplier * slack), torch.Tensor) else torch.tensor(float((multiplier * slack))))), torch.as_tensor(projection[int(n_parameters)])])
+
 def design_diffusivity(ce, theta):
     bounded = minimum(maximum(ce, 200.0), 2500.0)
     basis = spline_basis(bounded)
@@ -290,6 +370,7 @@ def optimize_mission(theta0, grid, initial_tape):
     gradient = torch.zeros(int(n_parameters), device=DEVICE)
     projected = torch.zeros(int(n_parameters), device=DEVICE)
     adjoint = torch.zeros(int((n_parameters + 2)), device=DEVICE)
+    projection = torch.zeros(int((n_parameters + 1)), device=DEVICE)
     tape = initial_tape
     candidate = torch.zeros(int(max_nodes), int(tape_columns), device=DEVICE)
     groups = mission_constraints(theta, tape)
@@ -304,6 +385,7 @@ def optimize_mission(theta0, grid, initial_tape):
     projected_norm = 0.0
     predicted_change = 0.0
     resolution = merit_resolution
+    tolerance = stationarity_tolerance
     accepted = 0.0
     updates = 0.0
     forwards = 0.0
@@ -322,32 +404,44 @@ def optimize_mission(theta0, grid, initial_tape):
                 status = (-2.0)
             if live > 0.0:
                 gradient = detach(adjoint[int(0):int(n_parameters)])
-                projected = (theta - minimum(maximum((theta - gradient), (-1.0)), 1.0))
+                projection = project_design((theta - gradient))
+                projected = (theta - projection[int(0):int(n_parameters)])
                 projected_norm = max_norm(projected, n_parameters)
-                if projected_norm <= 1e-05:
+                if projection[int(n_parameters)] < 1.0:
                     live = 0.0
-                    status = 2.0
+                    status = (-3.0)
+                if projected_norm <= tolerance:
+                    live = 0.0
+                    status = (-4.0)
+                    if metrics[int(11)] > 0.0:
+                        if max_norm(maximum(groups, 0.0), 8) == 0.0:
+                            status = 2.0
             if live > 0.0:
                 accepted = 0.0
                 for search in range(int(0), int(9)):
                     if accepted < 1.0:
                         if live > 0.0:
-                            trial = detach(minimum(maximum((theta - (step * gradient)), (-1.0)), 1.0))
-                            predicted_change = (gradient @ (trial - theta))
-                            if predicted_change >= (-resolution):
-                                live = 0.0
-                                status = 4.0
-                            if live > 0.0:
-                                candidate = replay_mission(trial, grid)
-                                forwards = (forwards + 1.0)
-                                if candidate[int(0), int(1)] > 0.0:
-                                    trial_groups = mission_constraints(trial, candidate)
-                                    trial_merit = mission_merit(candidate, trial_groups)
-                                    if trial_merit < merit:
-                                        if trial_merit <= (merit + (0.0001 * predicted_change)):
-                                            accepted = 1.0
-                                if accepted < 1.0:
-                                    step = (step / 2.0)
+                            projection = project_design(detach((theta - (step * gradient))))
+                            trial = detach(projection[int(0):int(n_parameters)])
+                            if projection[int(n_parameters)] < 1.0:
+                                print('Rejected projection trial: [step, projection status]')
+                                print(torch.stack([torch.as_tensor(step), torch.as_tensor(projection[int(n_parameters)])]))
+                            else:
+                                predicted_change = (gradient @ (trial - theta))
+                                if predicted_change >= (-resolution):
+                                    live = 0.0
+                                    status = 4.0
+                                if live > 0.0:
+                                    candidate = replay_mission(trial, grid)
+                                    forwards = (forwards + 1.0)
+                                    if candidate[int(0), int(1)] > 0.0:
+                                        trial_groups = mission_constraints(trial, candidate)
+                                        trial_merit = mission_merit(candidate, trial_groups)
+                                        if trial_merit < merit:
+                                            if trial_merit <= (merit + (0.0001 * predicted_change)):
+                                                accepted = 1.0
+                            if accepted < 1.0:
+                                step = (step / 2.0)
                 if accepted > 0.0:
                     theta = trial
                     tape = candidate
@@ -357,6 +451,7 @@ def optimize_mission(theta0, grid, initial_tape):
                     updates = (updates + 1.0)
                     output[int((updates + 1)), :] = torch.cat([theta, torch.stack([torch.as_tensor(updates), torch.as_tensor(metrics[int(0)]), torch.as_tensor(merit), torch.as_tensor(step), torch.as_tensor(projected_norm), torch.as_tensor(metrics[int(11)]), torch.as_tensor(metrics[int(7)]), torch.as_tensor(1.0)])])
                     print(torch.stack([torch.as_tensor(updates), torch.as_tensor(metrics[int(0)]), torch.as_tensor(merit), torch.as_tensor(step), torch.as_tensor(projected_norm), torch.as_tensor(metrics[int(11)]), torch.as_tensor(metrics[int(7)])]))
+                    step = min(maximum_design_step, (1.5 * step))
                     if metrics[int(11)] > 0.0:
                         if metrics[int(0)] < best_charge:
                             best = theta
@@ -1193,8 +1288,10 @@ wn = particle_inventory(nx_n, nr_n, radius_n, (length_n / nx_n), active_n)
 wp = particle_inventory(nx_p, nr_p, radius_p, (length_p / nx_p), active_p)
 inventory_weights = torch.cat([wn, wp, (eps * width), torch.tensor([0.0], device=DEVICE)])
 maximum_step = 10.0
-optimization_steps = 30
-starting_step = 10.0
+optimization_steps = 200
+starting_step = 10000.0
+maximum_design_step = 10000.0
+stationarity_tolerance = 1e-05
 penalty_weight = 100.0
 constraint_sharpness = 1000.0
 modification_budget = 0.25
@@ -1205,6 +1302,14 @@ spline_coefficients = torch.tensor([[[1.0, 0.0, 0.0, 0.0, 0.0, 0.0], [(-3.0), 3.
 quadrature_nodes = torch.tensor([(-0.8611363115940526), (-0.3399810435848563), 0.3399810435848563, 0.8611363115940526], device=DEVICE)
 quadrature_weights = torch.tensor([0.3478548451374539, 0.6521451548625461, 0.6521451548625461, 0.3478548451374539], device=DEVICE)
 budget_matrix = modification_matrix()
+budget_identity = torch.zeros(int(n_parameters), int(n_parameters), device=DEVICE)
+budget_hessian = torch.zeros(int(n_parameters), int(n_parameters), device=DEVICE)
+for row in range(int(0), int(n_parameters)):
+    budget_identity[int(row), int(row)] = 1.0
+for row in range(int(0), int(6)):
+    budget_hessian[int(row), int(0):int(6)] = budget_matrix[int(row), :]
+    budget_hessian[int((row + 6)), int(6):int(12)] = budget_matrix[int(row), :]
+budget_hessian[int(12), int(12)] = (1.0 / 3.0)
 newton_tolerance = 2e-06
 state_correction_tolerance = 5e-06
 algebraic_tolerance = 0.002
@@ -1240,9 +1345,22 @@ theta_best = optimization_history[int(0), int(0):int(n_parameters)]
 best_trajectory = replay_mission(theta_best, mission_grid)
 best_metrics = mission_metrics(theta_best, best_trajectory)
 best_constraints = mission_constraints(theta_best, best_trajectory)
-best_adjoint = mission_adjoint(theta_best, best_trajectory, best_constraints, 1.0)
-best_projected_gradient = (theta_best - minimum(maximum((theta_best - best_adjoint[int(0):int(n_parameters)]), (-1.0)), 1.0))
-stationarity = max_norm(best_projected_gradient, n_parameters)
+best_adjoint = mission_adjoint(theta_best, best_trajectory, best_constraints, 0.0)
+stationarity_diagnostics = constrained_stationarity(theta_best, detach(best_adjoint[int(0):int(n_parameters)]))
+stationarity = stationarity_diagnostics[int(0)]
+converged = 0.0
+if optimization_history[int(0), int(n_parameters)] == 2.0:
+    if best_adjoint[int(n_parameters)] > 0.0:
+        if best_metrics[int(11)] > 0.0:
+            if stationarity <= stationarity_tolerance:
+                if stationarity_diagnostics[int(3)] <= stationarity_tolerance:
+                    if stationarity_diagnostics[int(5)] > 0.0:
+                        if max_norm(maximum(best_constraints, 0.0), 8) == 0.0:
+                            converged = 1.0
+if converged > 0.0:
+    print('Constrained first-order convergence verified on the fixed grid.')
+else:
+    print('CONVERGENCE NOT VERIFIED: inspect status and stationarity diagnostics.')
 if optimization_history[int(0), int(n_parameters)] > 0.0:
     print('Best feasible design: [theta(13), status, updates, Q, merit, last projected norm, forward/adjoint counts, final iterate feasible]')
 else:
@@ -1254,6 +1372,10 @@ if optimization_history[int(0), int(n_parameters)] > 0.0:
 print(print(best_metrics))
 print(print(best_constraints))
 print(print(torch.stack([torch.as_tensor(stationarity), torch.as_tensor(best_adjoint[int(n_parameters)])])))
+if best_adjoint[int(n_parameters)] > 0.0:
+    print('Constrained stationarity: [gradient mapping, budget multiplier, budget slack, KKT residual, complementarity, projection status]')
+print(print(stationarity_diagnostics))
+print(print(best_adjoint))
 capacity_comparison = torch.zeros(int(5), device=DEVICE)
 capacity_comparison[int(0)] = baseline_metrics[int(0)]
 capacity_comparison[int(1)] = best_metrics[int(0)]
@@ -1277,6 +1399,23 @@ refined_best_trajectory = replay_mission(theta_best, refined_mission_grid)
 refined_baseline_metrics = mission_metrics(theta_baseline, refined_baseline_trajectory)
 refined_best_metrics = mission_metrics(theta_best, refined_best_trajectory)
 refinement_diagnostics = refinement_check(baseline_metrics, best_metrics, refined_baseline_metrics, refined_best_metrics)
+refined_best_constraints = mission_constraints(theta_best, refined_best_trajectory)
+refined_best_adjoint = mission_adjoint(theta_best, refined_best_trajectory, refined_best_constraints, 0.0)
+refined_stationarity_diagnostics = constrained_stationarity(theta_best, detach(refined_best_adjoint[int(0):int(n_parameters)]))
+refined_converged = 0.0
+if refined_best_adjoint[int(n_parameters)] > 0.0:
+    if refined_best_metrics[int(11)] > 0.0:
+        if refined_stationarity_diagnostics[int(0)] <= stationarity_tolerance:
+            if refined_stationarity_diagnostics[int(3)] <= stationarity_tolerance:
+                if refined_stationarity_diagnostics[int(5)] > 0.0:
+                    if max_norm(maximum(refined_best_constraints, 0.0), 8) == 0.0:
+                        refined_converged = 1.0
+if refined_converged > 0.0:
+    print('First-order stationarity verified on the halved grid.')
+else:
+    print('STATIONARITY NOT VERIFIED on the halved grid; inspect these diagnostics.')
+print(print(refined_stationarity_diagnostics))
+print(print(refined_best_adjoint))
 verification_trajectory = adaptive_mission(theta_best, (maximum_step / 2.0))
 verification_metrics = mission_metrics(theta_best, verification_trajectory)
 verification_diagnostics = refinement_check(baseline_metrics, best_metrics, baseline_metrics, verification_metrics)
@@ -1293,3 +1432,9 @@ else:
     print('VERIFICATION FAILED on the independent adaptive run. Report this candidate and diagnostics.')
 print(print(verification_metrics))
 print(print(verification_diagnostics))
+run_verified = (((converged * refined_converged) * max(0.0, refinement_diagnostics[int(0)])) * max(0.0, verification_diagnostics[int(0)]))
+if run_verified > 0.0:
+    print('RUN VERIFIED: first-order constrained convergence and both time checks passed.')
+else:
+    print('RUN INCOMPLETE: convergence or forward verification did not pass.')
+print(print(torch.stack([torch.as_tensor(run_verified), torch.as_tensor(converged), torch.as_tensor(refinement_diagnostics[int(0)]), torch.as_tensor(verification_diagnostics[int(0)]), torch.as_tensor(refined_converged)])))

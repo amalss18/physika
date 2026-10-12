@@ -1,7 +1,10 @@
 # Electrolyte property design for a synthetic takeoff/cruise/landing mission.
+# Baseline-to-convergence optimization and verification for the DFN tutorial.
 # Run: physika tutorials/dfn_electrolyte_design.phyk
 # Physics, objective and parameter updates live here; numerical routines are
-# in battery/mission_dae.phyk. All computations are authored in Physika.
+# in battery/mission_dae.phyk.
+
+# Grid size
 nx_n: ℕ = 5
 nx_s: ℕ = 5
 nx_p: ℕ = 5
@@ -56,9 +59,6 @@ cn0: ℝ[ns_n] = for k:ℕ(ns_n) -> initial_n + 0.0*k
 cp0: ℝ[ns_p] = for k:ℕ(ns_p) -> initial_p + 0.0*k
 ce0: ℝ[ne] = for k:ℕ(ne) -> initial_e + 0.0*k
 x0: ℝ[nd] = concat(cn0, cp0, ce0, [0.0])
-# Constant equilibrium/kinetic reference offsets condition the nonlinear solve without changing
-# the equations. Negative phi_s=z_n; positive phi_s is a collector value
-# plus its relative profile and ref_p; electrolyte phi_e=ref_e+z_e.
 un0: ℝ[1] = ocp_n([initial_n/cmax_n])
 u_n_initial: ℝ = un0[0]
 up0: ℝ[1] = ocp_p([initial_p/cmax_p])
@@ -99,8 +99,10 @@ inventory_weights: ℝ[nd] = concat(wn, wp, eps*width, [0.0])
 
 # Numerical and optimization settings are ordinary source-level constants.
 maximum_step: ℝ = 10.0
-optimization_steps: ℕ = 30
-starting_step: ℝ = 10.0
+optimization_steps: ℕ = 200
+starting_step: ℝ = 10000.0
+maximum_design_step: ℝ = 10000.0
+stationarity_tolerance: ℝ = 1e-5
 penalty_weight: ℝ = 100.0
 constraint_sharpness: ℝ = 1000.0
 modification_budget: ℝ = 0.25
@@ -198,6 +200,101 @@ budget_matrix: ℝ[6,6] = modification_matrix()
 
 def property_budget(theta: ℝ[n_parameters]): ℝ:
     return theta[0:6] @ budget_matrix @ theta[0:6] + theta[6:12] @ budget_matrix @ theta[6:12] + theta[12]**2/3.0
+
+# Euclidean projection onto the intersection of the coefficient box and the
+# quadratic property budget. Dykstra corrections are needed when both bind.
+# A small inward rounding margin preserves strict budget feasibility.
+budget_identity: ℝ[n_parameters,n_parameters] = zeros(n_parameters,n_parameters)
+budget_hessian: ℝ[n_parameters,n_parameters] = zeros(n_parameters,n_parameters)
+for row:ℕ(n_parameters):
+    budget_identity[row,row] = 1.0
+for row:ℕ(6):
+    budget_hessian[row,0:6] = budget_matrix[row,:]
+    budget_hessian[row+6,6:12] = budget_matrix[row,:]
+budget_hessian[12,12] = 1.0/3.0
+
+def project_budget(v: ℝ[n_parameters]): ℝ[n_parameters+1]:
+    identity: ℝ[n_parameters,n_parameters] = budget_identity
+    hessian: ℝ[n_parameters,n_parameters] = budget_hessian
+    target: ℝ = modification_budget**2*(1.0-8e-7)
+    result: ℝ[n_parameters] = v
+    low: ℝ = 0.0
+    high: ℝ = 1.0
+    middle: ℝ = 0.0
+    candidate: ℝ[n_parameters] = v
+    if property_budget(v) <= target:
+        return concat(v,[1.0])
+    result = gaussian_solve(identity+2.0*high*hessian,v)
+    for bracket:ℕ(32):
+        if property_budget(result) > target:
+            high = 2.0*high
+            result = gaussian_solve(identity+2.0*high*hessian,v)
+    if property_budget(result) > target:
+        return concat(result,[0.0])
+    for search:ℕ(32):
+        middle = 0.5*(low+high)
+        candidate = gaussian_solve(identity+2.0*middle*hessian,v)
+        if property_budget(candidate) > target:
+            low = middle
+        else:
+            high = middle
+            result = candidate
+    return concat(result,[1.0])
+
+def project_design(v: ℝ[n_parameters]): ℝ[n_parameters+1]:
+    x: ℝ[n_parameters] = v
+    y: ℝ[n_parameters] = minimum(maximum(v,-1.0),1.0)
+    old: ℝ[n_parameters] = v
+    box_correction: ℝ[n_parameters] = zeros(n_parameters)
+    budget_correction: ℝ[n_parameters] = zeros(n_parameters)
+    ellipse: ℝ[n_parameters+1] = zeros(n_parameters+1)
+    change: ℝ = 1.0
+    live: ℝ = 1.0
+    status: ℝ = 0.0
+    if property_budget(y) <= modification_budget**2*(1.0-8e-7):
+        return concat(y,[1.0])
+    for cycle:ℕ(128):
+        if live > 0.0:
+            old = x
+            y = minimum(maximum(x+box_correction,-1.0),1.0)
+            box_correction = x+box_correction-y
+            ellipse = project_budget(y+budget_correction)
+            x = ellipse[0:n_parameters]
+            budget_correction = y+budget_correction-x
+            change = max(max_norm(x-old,n_parameters),max_norm(x-y,n_parameters))
+            if ellipse[n_parameters] < 1.0:
+                live = 0.0
+            if change <= 2e-7:
+                live = 0.0
+                status = 1.0
+    # Remove only the last rounding error; convergence still requires Dykstra.
+    x = minimum(maximum(x,-1.0),1.0)
+    if property_budget(x) > modification_budget**2*(1.0-8e-7):
+        x = x*sqrt(modification_budget**2*(1.0-8e-7)/property_budget(x))
+    return concat(x,[status])
+
+# [unit-step gradient mapping, budget multiplier, budget slack,
+#  box KKT residual, complementarity residual, projection success].
+def constrained_stationarity(theta: ℝ[n_parameters], gradient: ℝ[n_parameters]): ℝ[6]:
+    hessian: ℝ[n_parameters,n_parameters] = budget_hessian
+    projection: ℝ[n_parameters+1] = project_design(theta-gradient)
+    budget_gradient: ℝ[n_parameters] = zeros(n_parameters)
+    for row:ℕ(n_parameters):
+        budget_gradient[row] = 2.0*sum(hessian[row,:]*theta)
+    free_gradient: ℝ[n_parameters] = gradient+zeros(n_parameters)
+    free_budget: ℝ[n_parameters] = budget_gradient+zeros(n_parameters)
+    multiplier: ℝ = 0.0
+    slack: ℝ = modification_budget**2-property_budget(theta)
+    residual: ℝ[n_parameters] = zeros(n_parameters)
+    for parameter:ℕ(n_parameters):
+        if abs(theta[parameter]) >= 1.0-1e-6:
+            free_gradient[parameter] = 0.0
+            free_budget[parameter] = 0.0
+    if slack <= 1e-6:
+        if free_budget @ free_budget > 1e-12:
+            multiplier = max(0.0,-(free_gradient @ free_budget)/(free_budget @ free_budget))
+    residual = theta-minimum(maximum(theta-gradient-multiplier*budget_gradient,-1.0),1.0)
+    return [max_norm(theta-projection[0:n_parameters],n_parameters),multiplier,slack,max_norm(residual,n_parameters),abs(multiplier*slack),projection[n_parameters]]
 
 def design_diffusivity(ce: ℝ[m], theta: ℝ[n_parameters]): ℝ[m]:
     bounded: ℝ[m] = minimum(maximum(ce,200.0),2500.0)
@@ -423,6 +520,7 @@ def optimize_mission(theta0: ℝ[n_parameters], grid: ℝ[max_nodes,tape_columns
     gradient: ℝ[n_parameters] = zeros(n_parameters)
     projected: ℝ[n_parameters] = zeros(n_parameters)
     adjoint: ℝ[n_parameters+2] = zeros(n_parameters+2)
+    projection: ℝ[n_parameters+1] = zeros(n_parameters+1)
     tape: ℝ[max_nodes,tape_columns] = initial_tape
     candidate: ℝ[max_nodes,tape_columns] = zeros(max_nodes,tape_columns)
     groups: ℝ[8] = mission_constraints(theta,tape)
@@ -437,6 +535,7 @@ def optimize_mission(theta0: ℝ[n_parameters], grid: ℝ[max_nodes,tape_columns
     projected_norm: ℝ = 0.0
     predicted_change: ℝ = 0.0
     resolution: ℝ = merit_resolution
+    tolerance: ℝ = stationarity_tolerance
     accepted: ℝ = 0.0
     updates: ℝ = 0.0
     forwards: ℝ = 0.0
@@ -455,32 +554,44 @@ def optimize_mission(theta0: ℝ[n_parameters], grid: ℝ[max_nodes,tape_columns
                 status = -2.0
             if live > 0.0:
                 gradient = detach(adjoint[0:n_parameters])
-                projected = theta-minimum(maximum(theta-gradient,-1.0),1.0)
+                projection = project_design(theta-gradient)
+                projected = theta-projection[0:n_parameters]
                 projected_norm = max_norm(projected,n_parameters)
-                if projected_norm <= 1e-5:
+                if projection[n_parameters] < 1.0:
                     live = 0.0
-                    status = 2.0
+                    status = -3.0
+                if projected_norm <= tolerance:
+                    live = 0.0
+                    status = -4.0
+                    if metrics[11] > 0.0:
+                        if max_norm(maximum(groups,0.0),8) == 0.0:
+                            status = 2.0
             if live > 0.0:
                 accepted = 0.0
                 for search:ℕ(9):
                     if accepted < 1.0:
                         if live > 0.0:
-                            trial = detach(minimum(maximum(theta-step*gradient,-1.0),1.0))
-                            predicted_change = gradient @ (trial-theta)
-                            if predicted_change >= -resolution:
-                                live = 0.0
-                                status = 4.0
-                            if live > 0.0:
-                                candidate = replay_mission(trial,grid)
-                                forwards = forwards+1.0
-                                if candidate[0,1] > 0.0:
-                                    trial_groups = mission_constraints(trial,candidate)
-                                    trial_merit = mission_merit(candidate,trial_groups)
-                                    if trial_merit < merit:
-                                        if trial_merit <= merit+1e-4*predicted_change:
-                                            accepted = 1.0
-                                if accepted < 1.0:
-                                    step = step/2.0
+                            projection = project_design(detach(theta-step*gradient))
+                            trial = detach(projection[0:n_parameters])
+                            if projection[n_parameters] < 1.0:
+                                print("Rejected projection trial: [step, projection status]")
+                                print([step,projection[n_parameters]])
+                            else:
+                                predicted_change = gradient @ (trial-theta)
+                                if predicted_change >= -resolution:
+                                    live = 0.0
+                                    status = 4.0
+                                if live > 0.0:
+                                    candidate = replay_mission(trial,grid)
+                                    forwards = forwards+1.0
+                                    if candidate[0,1] > 0.0:
+                                        trial_groups = mission_constraints(trial,candidate)
+                                        trial_merit = mission_merit(candidate,trial_groups)
+                                        if trial_merit < merit:
+                                            if trial_merit <= merit+1e-4*predicted_change:
+                                                accepted = 1.0
+                            if accepted < 1.0:
+                                step = step/2.0
                 if accepted > 0.0:
                     theta = trial
                     tape = candidate
@@ -490,6 +601,7 @@ def optimize_mission(theta0: ℝ[n_parameters], grid: ℝ[max_nodes,tape_columns
                     updates = updates+1.0
                     output[updates+1,:] = concat(theta,[updates,metrics[0],merit,step,projected_norm,metrics[11],metrics[7],1.0])
                     print([updates,metrics[0],merit,step,projected_norm,metrics[11],metrics[7]])
+                    step = min(maximum_design_step,1.5*step)
                     if metrics[11] > 0.0:
                         if metrics[0] < best_charge:
                             best = theta
@@ -554,7 +666,7 @@ def property_table(theta: ℝ[n_parameters]): ℝ[41,5]:
         result[row,:] = [ce,D[0],D[0]*exp(log(2.0)*sum(basis*theta[0:6])),kappa[0],kappa[0]*exp(log(2.0)*sum(basis*theta[6:12]))]
     return result
 
-# Run the mission design (development tests load definitions above this marker).
+# Run the mission design.
 theta_baseline: ℝ[n_parameters] = zeros(n_parameters)
 mission_grid: ℝ[max_nodes,tape_columns] = adaptive_mission(theta_baseline,maximum_step)
 if mission_grid[0,1] > 0.0:
@@ -582,14 +694,28 @@ else:
 print(baseline_metrics)
 if baseline_metrics[11] > 0.0:
     print("Updates: [iteration, charge Ah, merit, step, projected norm, feasible, budget]")
+# Start all thirteen design variables at the original electrolyte laws.
 optimization_history: ℝ[optimization_steps+2,history_columns] = optimize_mission(theta_baseline,mission_grid,baseline_trajectory)
 theta_best: ℝ[n_parameters] = optimization_history[0,0:n_parameters]
 best_trajectory: ℝ[max_nodes,tape_columns] = replay_mission(theta_best,mission_grid)
 best_metrics: ℝ[14] = mission_metrics(theta_best,best_trajectory)
 best_constraints: ℝ[8] = mission_constraints(theta_best,best_trajectory)
-best_adjoint: ℝ[n_parameters+2] = mission_adjoint(theta_best,best_trajectory,best_constraints,1.0)
-best_projected_gradient: ℝ[n_parameters] = theta_best-minimum(maximum(theta_best-best_adjoint[0:n_parameters],-1.0),1.0)
-stationarity: ℝ = max_norm(best_projected_gradient,n_parameters)
+best_adjoint: ℝ[n_parameters+2] = mission_adjoint(theta_best,best_trajectory,best_constraints,0.0)
+stationarity_diagnostics: ℝ[6] = constrained_stationarity(theta_best,detach(best_adjoint[0:n_parameters]))
+stationarity: ℝ = stationarity_diagnostics[0]
+converged: ℝ = 0.0
+if optimization_history[0,n_parameters] == 2.0:
+    if best_adjoint[n_parameters] > 0.0:
+        if best_metrics[11] > 0.0:
+            if stationarity <= stationarity_tolerance:
+                if stationarity_diagnostics[3] <= stationarity_tolerance:
+                    if stationarity_diagnostics[5] > 0.0:
+                        if max_norm(maximum(best_constraints,0.0),8) == 0.0:
+                            converged = 1.0
+if converged > 0.0:
+    print("Constrained first-order convergence verified on the fixed grid.")
+else:
+    print("CONVERGENCE NOT VERIFIED: inspect status and stationarity diagnostics.")
 # Best parameters, optimizer status and counters; exact operating diagnostics.
 if optimization_history[0,n_parameters] > 0.0:
     print("Best feasible design: [theta(13), status, updates, Q, merit, last projected norm, forward/adjoint counts, final iterate feasible]")
@@ -602,6 +728,10 @@ if optimization_history[0,n_parameters] > 0.0:
 print(best_metrics)
 print(best_constraints)
 print([stationarity,best_adjoint[n_parameters]])
+if best_adjoint[n_parameters] > 0.0:
+    print("Constrained stationarity: [gradient mapping, budget multiplier, budget slack, KKT residual, complementarity, projection status]")
+print(stationarity_diagnostics)
+print(best_adjoint)
 capacity_comparison: ℝ[5] = zeros(5)
 capacity_comparison[0] = baseline_metrics[0]
 capacity_comparison[1] = best_metrics[0]
@@ -628,6 +758,24 @@ refined_best_trajectory: ℝ[max_nodes,tape_columns] = replay_mission(theta_best
 refined_baseline_metrics: ℝ[14] = mission_metrics(theta_baseline,refined_baseline_trajectory)
 refined_best_metrics: ℝ[14] = mission_metrics(theta_best,refined_best_trajectory)
 refinement_diagnostics: ℝ[9] = refinement_check(baseline_metrics,best_metrics,refined_baseline_metrics,refined_best_metrics)
+# Verify first-order stationarity on the halved grid with the same design.
+refined_best_constraints: ℝ[8] = mission_constraints(theta_best,refined_best_trajectory)
+refined_best_adjoint: ℝ[n_parameters+2] = mission_adjoint(theta_best,refined_best_trajectory,refined_best_constraints,0.0)
+refined_stationarity_diagnostics: ℝ[6] = constrained_stationarity(theta_best,detach(refined_best_adjoint[0:n_parameters]))
+refined_converged: ℝ = 0.0
+if refined_best_adjoint[n_parameters] > 0.0:
+    if refined_best_metrics[11] > 0.0:
+        if refined_stationarity_diagnostics[0] <= stationarity_tolerance:
+            if refined_stationarity_diagnostics[3] <= stationarity_tolerance:
+                if refined_stationarity_diagnostics[5] > 0.0:
+                    if max_norm(maximum(refined_best_constraints,0.0),8) == 0.0:
+                        refined_converged = 1.0
+if refined_converged > 0.0:
+    print("First-order stationarity verified on the halved grid.")
+else:
+    print("STATIONARITY NOT VERIFIED on the halved grid; inspect these diagnostics.")
+print(refined_stationarity_diagnostics)
+print(refined_best_adjoint)
 verification_trajectory: ℝ[max_nodes,tape_columns] = adaptive_mission(theta_best,maximum_step/2.0)
 verification_metrics: ℝ[14] = mission_metrics(theta_best,verification_trajectory)
 verification_diagnostics: ℝ[9] = refinement_check(baseline_metrics,best_metrics,baseline_metrics,verification_metrics)
@@ -644,3 +792,10 @@ else:
     print("VERIFICATION FAILED on the independent adaptive run. Report this candidate and diagnostics.")
 print(verification_metrics)
 print(verification_diagnostics)
+
+run_verified: ℝ = converged*refined_converged*max(0.0,refinement_diagnostics[0])*max(0.0,verification_diagnostics[0])
+if run_verified > 0.0:
+    print("RUN VERIFIED: first-order constrained convergence and both time checks passed.")
+else:
+    print("RUN INCOMPLETE: convergence or forward verification did not pass.")
+print([run_verified,converged,refinement_diagnostics[0],verification_diagnostics[0],refined_converged])

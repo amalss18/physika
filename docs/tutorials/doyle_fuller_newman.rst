@@ -346,13 +346,11 @@ parameter differentiation.
 
 The central operations in ``mission_adjoint`` are
 
-.. code-block:: text
-
-   multiplier = detach(gaussian_solve(transposed, rhs[node, :]))
-   gradient = gradient - grad(
-       residual_contraction(theta, multiplier, u, a, history, t, h, alpha, power),
-       theta,
-   )
+.. literalinclude:: ../../tutorials/battery/mission_dae.phyk
+   :language: text
+   :start-at:             multiplier = detach(gaussian_solve(transposed,rhs[node,:]))
+   :end-before:                 output[n_parameters+1] = output[n_parameters+1]+1.0
+   :dedent: 12
 
 Projected gradient descent updates the design:
 
@@ -568,12 +566,13 @@ Electrolyte optimization
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``tutorials/dfn_electrolyte_design.phyk`` starts from the baseline properties,
-optimizes the 32-minute mission to the stationarity tolerance, and checks the
-result on a finer time grid and with an independent adaptive solve.
+optimizes the 32-minute mission to the stationarity tolerance, and checks
+feasibility and stationarity on a halved time grid. An independent adaptive
+solve checks the forward predictions.
 
 .. code-block:: console
 
-   OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 physika tutorials/dfn_electrolyte_design.phyk
+   physika tutorials/dfn_electrolyte_design.phyk
 
 .. literalinclude:: ../../tutorials/dfn_electrolyte_design.phyk
    :language: text

@@ -1,7 +1,6 @@
 # Basic Doyle-Fuller-Newman model, Chen2020, isothermal prescribed current.
 # Run the forward solve with: physika tutorials/doyle_fuller_newman.phyk
 # Fixed demonstration: five cells per coordinate, 5 A discharge to 2.5 V.
-# Equations and spatial operators live here; time integration is in battery/dae.phyk.
 nx_n: ℕ = 5
 nx_s: ℕ = 5
 nx_p: ℕ = 5
@@ -148,7 +147,7 @@ def surface_p(x: ℝ[nd]): ℝ[nx_p]:
 def dfn_cutoff(t: ℝ, x: ℝ[nd], z: ℝ[na]): ℝ:
     return dfn_voltage(t,x,z)-2.5
 
-# Tutorial-local float32 BDF2 integration.
+# BDF2 integration.
 nb: ℕ = nd+na
 solver_scale: ℝ[nb] = concat(x_scale,z_scale)
 from tutorials.battery.gaussian_elimination import gaussian_solve, get_2d_array_num_rows, get_2d_array_num_cols, get_1d_array_length, min, max
@@ -181,8 +180,8 @@ def lithium_inventory_drift(states: ℝ[82,nb+1]): ℝ:
 def prediction_values(states: ℝ[82,nb+1], fields: ℝ[82,nf], row: ℝ): ℝ[3]:
     return [states[row,0],fields[row,0],states[row,nd]]
 
-# Run the fixed discharge and show a few predictions. The full trajectory and
-# reconstructed fields remain available for validation without printing them.
+# Run the fixed discharge and show a few predictions.
+
 trajectory: ℝ[82,nb+1] = integrate_dfn()
 
 prediction_fields: ℝ[82,nf] = trajectory_fields(trajectory)

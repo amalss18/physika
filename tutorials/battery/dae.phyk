@@ -1,4 +1,4 @@
-# Float32 BDF2 for this fixed DFN. All iteration and time-step decisions live
+# BDF2 for this fixed DFN. All iteration and time-step decisions live
 # here; the existing Physika Gaussian solver supplies the linear solves.
 newton_tolerance: ℝ = 2e-6
 algebraic_tolerance: ℝ = 2e-3
@@ -13,7 +13,7 @@ def max_norm(v: ℝ[m], n: ℕ): ℝ:
             result = abs(v[k])
     return result
 
-# NaN comparisons are false; infinities exceed float32's largest value.
+# NaN comparisons are false; infinities exceed the magnitude bound below.
 def finite_values(v: ℝ[m], n: ℕ): ℝ:
     valid: ℝ = 1.0
     for k:ℕ(n):
@@ -174,7 +174,7 @@ def bdf_step(t: ℝ, a: ℝ[nd], b: ℝ[na], h: ℝ, previous: ℝ[nd], previous
     return concat(a+result[0:nd],result[nd:nb],result[nb:nb+2])
 
 # A small quantized controller keeps h and t as scalar numbers rather than
-# accumulating float32 clock roundoff. Acceptance still uses the LTE test.
+# accumulating clock roundoff. Acceptance still uses the LTE test.
 def step_factor(error: ℝ): ℝ:
     factor: ℝ = 2.0
     if error > 0.03:
