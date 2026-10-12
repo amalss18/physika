@@ -539,8 +539,8 @@ and design allowance. The study demonstrates a complete forward, adjoint
 and design calculation in Physika. Mapping the optimized laws to an
 electrolyte composition requires a separate composition-to-property model.
 
-Full code
----------
+Example code
+------------
 
 Run the following scripts from the repository root with Physika installed.
 They use the shared Physika helpers for
@@ -561,6 +561,7 @@ Forward discharge
 
 .. literalinclude:: ../../tutorials/doyle_fuller_newman.phyk
    :language: text
+   :end-at: trajectory: ℝ[82,nb+1] = integrate_dfn()
 
 Electrolyte optimization
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -576,6 +577,7 @@ solve checks the forward predictions.
 
 .. literalinclude:: ../../tutorials/dfn_electrolyte_design.phyk
    :language: text
+   :end-at: best_trajectory: ℝ[max_nodes,tape_columns] = replay_mission(theta_best,mission_grid)
 
 References
 ----------

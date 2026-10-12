@@ -2,16 +2,12 @@
 # Caller globals describe one fixed cell. theta and phase power are explicit.
 # The existing battery-local Gaussian solver supplies every linear solve.
 newton_tolerance: ℝ = 2e-6
-# The stiff salt block can reach its roundoff floor before the raw
-# differential residual is tiny. Accept only a small scaled state correction,
-# with the stricter algebraic residual test still satisfied. Validate this
-# bound against the reference and finite differences, separately from the LTE.
+
 state_correction_tolerance: ℝ = 5e-6
 algebraic_tolerance: ℝ = 2e-3
 relative_tolerance: ℝ = 1e-4
 absolute_tolerance: ℝ = 1e-6
 
-# An explicit length keeps reductions simple on the existing compiler.
 def max_norm(v: ℝ[m], n: ℕ): ℝ:
     result: ℝ = 0.0
     for k:ℕ(n):
@@ -160,8 +156,6 @@ def bdf_step(t: ℝ, a: ℝ[nd], b: ℝ[na], h: ℝ, previous: ℝ[nd], previous
     result: ℝ[nb+2] = step_newton(a,b,history,t,h,alpha,theta,power)
     return concat(a+result[0:nd],result[nd:nb],result[nb:nb+2])
 
-# A small quantized controller keeps h and t as scalar numbers rather than
-# accumulating clock roundoff. Acceptance still uses the LTE test.
 def step_factor(error: ℝ): ℝ:
     factor: ℝ = 2.0
     if error > 0.03:

@@ -5,7 +5,6 @@ algebraic_tolerance: ℝ = 2e-3
 relative_tolerance: ℝ = 1e-4
 absolute_tolerance: ℝ = 1e-6
 
-# An explicit length keeps reductions simple on the existing compiler.
 def max_norm(v: ℝ[m], n: ℕ): ℝ:
     result: ℝ = 0.0
     for k:ℕ(n):
@@ -173,8 +172,6 @@ def bdf_step(t: ℝ, a: ℝ[nd], b: ℝ[na], h: ℝ, previous: ℝ[nd], previous
     result: ℝ[nb+2] = step_newton(a,b,history,t,h,alpha)
     return concat(a+result[0:nd],result[nd:nb],result[nb:nb+2])
 
-# A small quantized controller keeps h and t as scalar numbers rather than
-# accumulating clock roundoff. Acceptance still uses the LTE test.
 def step_factor(error: ℝ): ℝ:
     factor: ℝ = 2.0
     if error > 0.03:
