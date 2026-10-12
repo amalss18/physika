@@ -1,5 +1,5 @@
 Doyle-Fuller-Newman battery model and electrolyte design
-==============================================
+========================================================
 
 This tutorial develops a Doyle–Fuller–Newman (DFN) battery model in Physika,
 verifies its predictions against PyBaMM, and uses a discrete adjoint to design
@@ -164,7 +164,7 @@ electrode or by initial electrolyte concentration. The discharge reaches
 cutoff at approximately 3558.19 s, withdrawing 4.94193 Ah. These comparisons
 establish implementation agreement on a common coarse mesh.
 
-.. figure:: ../_static/dfn_validation/voltage.png
+.. figure:: ../_static/tutorial_files/dfn_validation/voltage.png
    :width: 100%
    :alt: Terminal voltage for the Physika and PyBaMM discharge
 
@@ -172,7 +172,7 @@ establish implementation agreement on a common coarse mesh.
    298.15 K, ending at 2.5 V. Solid blue denotes Physika and dashed orange
    denotes PyBaMM; both use five cells per region and particle radius.
 
-.. figure:: ../_static/dfn_validation/concentrations.png
+.. figure:: ../_static/tutorial_files/dfn_validation/concentrations.png
    :width: 100%
    :alt: Electrolyte and particle surface concentrations in the forward-model comparison
 
@@ -413,7 +413,7 @@ The optimized laws reduce mission throughput capacity from 1.808812 to
      - 0
      - 0.06249994
 
-.. figure:: ../design/from_baseline/mission.png
+.. figure:: ../_static/tutorial_files/dfn_design_val/mission.png
    :width: 100%
    :alt: Mission power, current, voltage and cumulative throughput capacity reduction
 
@@ -431,7 +431,7 @@ landing contributing 0.376 and 0.766 mAh. The large cruise contribution
 reflects its long duration, even though the voltage gain is larger during
 takeoff and landing.
 
-.. figure:: ../design/from_baseline/properties_and_surfaces.png
+.. figure:: ../_static/tutorial_files/dfn_design_val/properties_and_surfaces.png
    :width: 100%
    :alt: Baseline and converged electrolyte diffusivity and conductivity laws
 
@@ -449,7 +449,7 @@ location of the conductivity enhancement is therefore consistent with
 allocating the limited property budget to concentrations important for
 ionic conduction during the mission. Changes above about 1800 mol/m³ are small.
 
-.. figure:: ../design/from_baseline/electrolyte.png
+.. figure:: ../_static/tutorial_files/dfn_design_val/electrolyte.png
    :width: 100%
    :alt: Baseline and optimized electrolyte concentration maps and spatial extrema
 
@@ -478,7 +478,7 @@ gradients are zero. On this mesh, the maximum gradient magnitude is
 26.88 mol/m³ per µm for baseline and 20.98 mol/m³ per µm for the converged
 design.
 
-.. figure:: ../design/from_baseline/electrolyte_gradient.png
+.. figure:: ../_static/tutorial_files/dfn_design_val/electrolyte_gradient.png
    :width: 100%
    :alt: Baseline and converged spatial electrolyte concentration gradients over time
 
