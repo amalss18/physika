@@ -1,4 +1,4 @@
-From a forward DFN model to electrolyte design
+Doyle-Fuller-Newman battery model and electrolyte design
 ==============================================
 
 This tutorial develops a Doyle–Fuller–Newman (DFN) battery model in Physika,
