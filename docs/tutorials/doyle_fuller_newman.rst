@@ -272,8 +272,9 @@ states must satisfy the concentration constraints below.
 Design and operating constraints
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-As we are creating a synthetic example and not modeling
-electrolyte mixture properties we enforce the following constraint:
+For this synthetic example, we optimize electrolyte transport-property laws
+independently of electrolyte composition. We impose a shared budget on the
+magnitude and concentration dependence of the property modifications:
 
 .. math::
 
@@ -429,8 +430,8 @@ The optimized laws reduce mission throughput capacity from 1.808812 to
 
 Cruise contributes 4.029 mAh of the throughput reduction, with takeoff and
 landing contributing 0.376 and 0.765 mAh. The large cruise contribution
-reflects its long duration. The optimized diffusivity and conductivity
-increase mainly at intermediate concentrations.
+reflects its long duration, even though the voltage gain is larger during
+takeoff and landing.
 
 .. figure:: ../design/convergence/properties_and_surfaces.png
    :width: 100%
@@ -439,6 +440,16 @@ increase mainly at intermediate concentrations.
    Electrolyte diffusivity (left) and conductivity (right) at 298.15 K over
    the 200–2500 mol/m³ design interval. Dashed blue denotes baseline and
    solid orange the converged design.
+
+The largest relative increases in diffusivity and conductivity occur near
+1000 mol/m³, reaching approximately 50% and 43%, respectively. The diffusivity
+enhancement extends into the moderately depleted concentration range,
+while conductivity develops a more pronounced maximum near the
+initial concentration. During much of cruise, separator concentrations lie
+near 900–1000 mol/m³ and the separator carries the full ionic current. The
+location of the conductivity enhancement is therefore consistent with
+allocating the limited property budget to concentrations important for
+ionic conduction during the mission. Changes above about 1800 mol/m³ are small.
 
 .. figure:: ../design/convergence/electrolyte.png
    :width: 100%
@@ -482,26 +493,52 @@ design.
    with zero outer-face gradients. White dotted lines mark the electrode
    and separator boundaries. Units are mol/m³ per µm.
 
-The design raises minimum voltage and narrows the electrolyte concentration
-range. Its operating and reserve constraints retain strict margins.
-The property budget is fully used within numerical precision, and one
-coefficient in each transport-property spline reaches its upper bound.
-These design constraints limit further modification at the final solution.
+The concentration maps show reduced salt accumulation in the negative
+electrode and reduced depletion in the positive electrode. Higher
+diffusivity supports salt redistribution, while the increase in
+:math:`t_+` from 0.2594 to 0.2701 reduces the salt-source factor
+:math:`1-t_+`. The optimized design narrows the concentration range and
+reduces the maximum spatial gradient by about 22%. In the electrolyte-current
+equation, concentration polarization depends on
+:math:`(1-t_+)\nabla\ln c_e`, and the resistive potential gradient scales as
+:math:`i_e/(\epsilon^{1.5}\kappa_e)`. The flatter concentration profiles and
+higher conductivity therefore reduce both contributions to electrolyte
+polarization.
 
-The independently recomputed gradient mapping is :math:`6.08\times10^{-6}`
-and the KKT residual is :math:`6.05\times10^{-6}`, both below the
-:math:`10^{-5}` tolerance. Halving the time steps changes optimized throughput
-capacity by 0.00858 mAh, minimum voltage by 0.136 mV and concentration extrema
-by at most 3.37 mol/m³. An independent adaptive solve gives comparable agreement.
-The adjoint stationarity check also passes on the finer time grid.
+.. This interpretation is supported by the saved potential fields. At the end
+.. of landing, the voltage loss between electrolyte potentials averaged over
+.. each electrode decreases from 84.8 to 62.0 mV. Splitting the gradient of
+.. electrolyte potential into concentration and resistive terms gives a concentration
+.. contribution of 52.2 versus 37.5 mV and an ohmic contribution of 32.6 versus
+.. 24.5 mV for baseline and optimized designs, respectively. Their combined
+.. reduction of 22.8 mV accounts for most of the 24.7 mV gain in terminal voltage
+.. at this point in the mission.
+..
+Under power control, the resulting voltage gain lowers current through
+:math:`I=P/V`, reducing the integral that defines throughput capacity.
+The charge-weighted mean terminal voltage, :math:`E/Q_{\mathrm{th}}`, rises
+from 3.86994 to 3.88104 V while both designs deliver 7.0 Wh. An increase of
+about 11.1 mV on this voltage scale explains the modest 0.286% capacity
+saving, despite the larger relative changes in transport properties and
+concentration gradients. The optimization improves mission utilization by
+reducing electrolyte losses.
 
-The throughput reduction remains modest after reaching numerical first-order
-convergence. It is specific to this mission, fixed cell model and property
-allowance. The study demonstrates a complete forward, adjoint and design
-calculation in Physika. The optimized properties are targets for transport
-laws; mapping them to an electrolyte composition requires a separate
-composition-to-property model. Global optimality and spatial convergence of
-the final design have not been established.
+.. The operating and reserve constraints retain strict margins.
+.. The property budget is fully used within numerical precision, and one
+.. coefficient in each transport-property spline reaches its upper bound.
+.. These design constraints limit further modification at the final solution.
+..
+.. The independently recomputed gradient mapping is :math:`6.08\times10^{-6}`
+.. and the KKT residual is :math:`6.05\times10^{-6}`, both below the
+.. :math:`10^{-5}` tolerance. Halving the time steps changes optimized throughput
+.. capacity by 0.00858 mAh, minimum voltage by 0.136 mV and concentration extrema
+.. by at most 3.37 mol/m³. An independent adaptive solve gives comparable agreement.
+.. The adjoint stationarity check also passes on the finer time grid.
+
+These transport targets are specific to the mission, cell model
+and design allowance. The study demonstrates a complete forward, adjoint
+and design calculation in Physika. Mapping the optimized laws to an
+electrolyte composition requires a separate composition-to-property model.
 
 Running the examples
 --------------------
