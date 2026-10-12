@@ -261,7 +261,7 @@ number lies between 0.1594 and 0.3594.
 Physika evaluates the modified laws inside the same forward residual. For
 diffusivity, this is
 
-.. literalinclude:: ../design/convergence/dfn_electrolyte_convergence.phyk
+.. literalinclude:: ../../tutorials/dfn_electrolyte_design.phyk
    :language: text
    :start-at: def design_diffusivity(
    :end-before: def design_conductivity(
@@ -401,21 +401,21 @@ The optimized laws reduce mission throughput capacity from 1.808812 to
      - 1.803642
    * - Minimum voltage (V)
      - 3.5731
-     - 3.5978
+     - 3.5979
    * - Maximum current (A)
      - 8.3961
-     - 8.3384
+     - 8.3383
    * - Electrolyte concentration range (mol/m³)
      - 323.8–2492.6
-     - 463.4–2160.8
+     - 463.9–2160.0
    * - Transference number
      - 0.259400
-     - 0.270142
+     - 0.270202
    * - Property budget (limit 0.0625)
      - 0
      - 0.06249994
 
-.. figure:: ../design/convergence/mission.png
+.. figure:: ../design/from_baseline/mission.png
    :width: 100%
    :alt: Mission power, current, voltage and cumulative throughput capacity reduction
 
@@ -429,11 +429,11 @@ The optimized laws reduce mission throughput capacity from 1.808812 to
    delivered by both designs.
 
 Cruise contributes 4.029 mAh of the throughput reduction, with takeoff and
-landing contributing 0.376 and 0.765 mAh. The large cruise contribution
+landing contributing 0.376 and 0.766 mAh. The large cruise contribution
 reflects its long duration, even though the voltage gain is larger during
 takeoff and landing.
 
-.. figure:: ../design/convergence/properties_and_surfaces.png
+.. figure:: ../design/from_baseline/properties_and_surfaces.png
    :width: 100%
    :alt: Baseline and converged electrolyte diffusivity and conductivity laws
 
@@ -451,7 +451,7 @@ location of the conductivity enhancement is therefore consistent with
 allocating the limited property budget to concentrations important for
 ionic conduction during the mission. Changes above about 1800 mol/m³ are small.
 
-.. figure:: ../design/convergence/electrolyte.png
+.. figure:: ../design/from_baseline/electrolyte.png
    :width: 100%
    :alt: Baseline and optimized electrolyte concentration maps and spatial extrema
 
@@ -477,10 +477,10 @@ the cell. At each internal finite-volume face it is approximated by
 This uses the same face-gradient formula as the forward model, including
 the nonuniform spacing between electrode and separator cells. Outer-face
 gradients are zero. On this mesh, the maximum gradient magnitude is
-26.88 mol/m³ per µm for baseline and 21.00 mol/m³ per µm for the converged
+26.88 mol/m³ per µm for baseline and 20.98 mol/m³ per µm for the converged
 design.
 
-.. figure:: ../design/convergence/electrolyte_gradient.png
+.. figure:: ../design/from_baseline/electrolyte_gradient.png
    :width: 100%
    :alt: Baseline and converged spatial electrolyte concentration gradients over time
 
@@ -496,7 +496,7 @@ design.
 The concentration maps show reduced salt accumulation in the negative
 electrode and reduced depletion in the positive electrode. Higher
 diffusivity supports salt redistribution, while the increase in
-:math:`t_+` from 0.2594 to 0.2701 reduces the salt-source factor
+:math:`t_+` from 0.2594 to 0.2702 reduces the salt-source factor
 :math:`1-t_+`. The optimized design narrows the concentration range and
 reduces the maximum spatial gradient by about 22%. In the electrolyte-current
 equation, concentration polarization depends on
@@ -511,9 +511,10 @@ polarization.
 .. electrolyte potential into concentration and resistive terms gives a concentration
 .. contribution of 52.2 versus 37.5 mV and an ohmic contribution of 32.6 versus
 .. 24.5 mV for baseline and optimized designs, respectively. Their combined
-.. reduction of 22.8 mV accounts for most of the 24.7 mV gain in terminal voltage
+.. reduction of 22.8 mV accounts for most of the 24.8 mV gain in terminal voltage
 .. at this point in the mission.
 ..
+
 Under power control, the resulting voltage gain lowers current through
 :math:`I=P/V`, reducing the integral that defines throughput capacity.
 The charge-weighted mean terminal voltage, :math:`E/Q_{\mathrm{th}}`, rises
@@ -528,11 +529,11 @@ reducing electrolyte losses.
 .. coefficient in each transport-property spline reaches its upper bound.
 .. These design constraints limit further modification at the final solution.
 ..
-.. The independently recomputed gradient mapping is :math:`6.08\times10^{-6}`
-.. and the KKT residual is :math:`6.05\times10^{-6}`, both below the
+.. The independently recomputed gradient mapping is :math:`3.99\times10^{-6}`
+.. and the KKT residual is :math:`3.99\times10^{-6}`, both below the
 .. :math:`10^{-5}` tolerance. Halving the time steps changes optimized throughput
-.. capacity by 0.00858 mAh, minimum voltage by 0.136 mV and concentration extrema
-.. by at most 3.37 mol/m³. An independent adaptive solve gives comparable agreement.
+.. capacity by 0.00846 mAh, minimum voltage by 0.136 mV and concentration extrema
+.. by at most 3.38 mol/m³. An independent adaptive solve gives comparable agreement.
 .. The adjoint stationarity check also passes on the finer time grid.
 
 These transport targets are specific to the mission, cell model
@@ -540,40 +541,42 @@ and design allowance. The study demonstrates a complete forward, adjoint
 and design calculation in Physika. Mapping the optimized laws to an
 electrolyte composition requires a separate composition-to-property model.
 
-Running the examples
---------------------
+Full code
+---------
 
-From the repository root, with Physika installed, run the forward discharge:
+Run the following scripts from the repository root with Physika installed.
+They use the shared Physika helpers for
+:download:`constitutive laws <../../tutorials/battery/chen2020.phyk>`,
+:download:`finite-volume operators <../../tutorials/battery/finite_volume.phyk>`,
+:download:`linear solves <../../tutorials/battery/gaussian_elimination.phyk>`,
+:download:`forward time integration <../../tutorials/battery/dae.phyk>` and
+:download:`mission integration and adjoints <../../tutorials/battery/mission_dae.phyk>`.
+
+Forward discharge
+~~~~~~~~~~~~~~~~~
+
+``tutorials/doyle_fuller_newman.phyk``
 
 .. code-block:: console
 
    physika tutorials/doyle_fuller_newman.phyk
 
-To reproduce the final optimization and its numerical checks, run
+.. literalinclude:: ../../tutorials/doyle_fuller_newman.phyk
+   :language: text
+
+Electrolyte optimization
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+``tutorials/dfn_electrolyte_design.phyk`` starts from the baseline properties,
+optimizes the 32-minute mission to the stationarity tolerance, and checks the
+result on a finer time grid and with an independent adaptive solve.
 
 .. code-block:: console
 
-   OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 physika docs/design/convergence/dfn_electrolyte_convergence.phyk
+   OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 physika tutorials/dfn_electrolyte_design.phyk
 
-The optimization script starts from a recorded intermediate design and
-completes the converged calculation. The full study used 37 accepted updates
-across the initial run and continuation. The
-:download:`initial design script <../../tutorials/dfn_electrolyte_design.phyk>`
-starts from baseline and performs thirty updates; it stops before convergence.
-PyBaMM is used for reference comparisons during development. Running these
-Physika scripts requires no external numerical runner or optimizer.
-
-The source separates constitutive laws (``battery/chen2020.phyk``),
-conservative spatial operators (``battery/finite_volume.phyk``), and time
-integration and adjoints (``battery/dae.phyk`` and ``battery/mission_dae.phyk``).
-The full :download:`optimization source <../design/convergence/dfn_electrolyte_convergence.phyk>`,
-:download:`results <../design/convergence/results.json>`,
-:download:`forward verification report <../_static/dfn_validation/performance_improvements.json>`
-and :download:`experiment record <../design/convergence/README.md>` provide
-the detailed numerical settings and measurements. The
-:download:`figure data <../design/convergence/plot_data.npz>` and
-:download:`plotting script <../design/convergence/plot_figures.py>` reproduce
-the mission figures from saved results.
+.. literalinclude:: ../../tutorials/dfn_electrolyte_design.phyk
+   :language: text
 
 References
 ----------
