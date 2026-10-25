@@ -5,11 +5,11 @@
 # in battery/mission_dae.phyk.
 
 # Grid size
-nx_n: ℕ = 5
-nx_s: ℕ = 5
-nx_p: ℕ = 5
-nr_n: ℕ = 5
-nr_p: ℕ = 5
+nx_n: ℕ = 10
+nx_s: ℕ = 10
+nx_p: ℕ = 10
+nr_n: ℕ = 10
+nr_p: ℕ = 10
 current_nominal: ℝ = 5.0
 
 from tutorials.battery.chen2020 import faraday, gas_constant, temperature, length_n, length_s, length_p, area, radius_n, radius_p, diffusivity_n, diffusivity_p, sigma_n, sigma_p, porosity_n, porosity_s, porosity_p, active_n, active_p, cmax_n, cmax_p, initial_n, initial_p, initial_e, t_plus, minimum, maximum, softplus, sinh, tanh, ocp_barrier, ocp_n, ocp_p, exchange_n, exchange_p, electrolyte_diffusivity, electrolyte_conductivity

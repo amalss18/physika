@@ -5,7 +5,7 @@ This tutorial develops a Doyle–Fuller–Newman (DFN) battery model in Physika,
 verifies its predictions against PyBaMM, and uses a discrete adjoint to design
 electrolyte transport properties for a synthetic EVTOL flight mission.
 For the specified mission and design allowance, the optimized properties
-reduce mission throughput capacity by **5.170 mAh (0.286%)**.
+reduce mission throughput capacity by **5.253 mAh (0.290%)**.
 
 Introduction
 ------------
@@ -102,7 +102,7 @@ DFN in Physika
 ----------------------------
 
 Cell-centred finite volumes discretize the three cell regions and particle
-radii, using five cells in each region and five radial shells per particle.
+radii, using ten cells in each region and ten radial shells per particle.
 Spherical shell volumes preserve particle lithium balance. Shared interface
 fluxes preserve conservation between neighbouring cells; boundary
 extrapolation reconstructs particle surface concentrations and collector
@@ -149,20 +149,20 @@ potentials and voltage are compared at common saved times and positions.
    * - Quantity
      - Result
    * - Maximum terminal-voltage error
-     - 0.120 mV
+     - 0.249 mV
    * - Maximum error across potential fields
-     - 0.119 mV
+     - 0.249 mV
    * - Maximum scaled concentration error
-     - 0.537%
+     - 0.590%
    * - Cutoff-time difference
-     - Less than 0.006 s
+     - 0.00030 s
    * - Relative lithium-inventory drift
-     - :math:`6.77\times10^{-7}`
+     - :math:`1.69\times10^{-7}`
 
 Concentration errors are normalized by maximum solid concentration in each
 electrode or by initial electrolyte concentration. The discharge reaches
-cutoff at approximately 3558.19 s, withdrawing 4.94193 Ah. These comparisons
-establish implementation agreement on a common coarse mesh.
+cutoff at approximately 3556.10 s, withdrawing 4.93903 Ah. These comparisons
+establish implementation agreement on a common mesh.
 
 .. figure:: ../_static/tutorial_files/dfn_validation/voltage.png
    :width: 100%
@@ -170,7 +170,7 @@ establish implementation agreement on a common coarse mesh.
 
    Terminal voltage during a 5 A discharge of the Chen2020 LG M50 cell at
    298.15 K, ending at 2.5 V. Solid blue denotes Physika and dashed orange
-   denotes PyBaMM; both use five cells per region and particle radius.
+   denotes PyBaMM; both use ten cells per region and particle radius.
 
 .. figure:: ../_static/tutorial_files/dfn_validation/concentrations.png
    :width: 100%
@@ -180,7 +180,7 @@ establish implementation agreement on a common coarse mesh.
    at 298.15 K. From left to right: electrolyte, negative particle surface
    and positive particle surface concentration. Blue, orange and green
    denote 100, 1500 and 3000 s, respectively. Solid curves denote Physika;
-   dashed curves with markers denote PyBaMM on the same five-cell mesh.
+   dashed curves with markers denote PyBaMM on the same ten-cell mesh.
 
 Electrolyte design problem
 ---------------------------
@@ -311,7 +311,7 @@ Discrete adjoint and optimization
 ---------------------------------
 
 An adaptive baseline mission first records a time grid with a maximum step
-of 10 s. All optimization trajectories replay this grid, which has 227
+of 10 s. All optimization trajectories replay this grid, which has 224
 saved nodes. This defines a fixed discrete problem for differentiation.
 Let :math:`w_k=(y_k,z_k,I_k)` and write each converged step as
 :math:`R_k(w_k,w_{k-1},w_{k-2};\theta)=0`. Its differential rows are
@@ -374,7 +374,8 @@ mapping satisfies
 The reported design also passes exact sampled feasibility checks and an
 independently recomputed Karush–Kuhn–Tucker (KKT) stationarity check.
 
-.. Directional finite differences checked the full-mission adjoint in thirty
+.. On the original five-cell mesh, directional finite differences checked
+.. the full-mission adjoint in thirty
 .. comparisons across two feasible designs, five directions and three
 .. perturbation sizes. All met the mixed absolute/relative error criterion
 .. :math:`10^{-5}+0.01\max(|d_{\mathrm{adj}}|,|d_{\mathrm{FD}}|)`.
@@ -384,8 +385,8 @@ independently recomputed Karush–Kuhn–Tucker (KKT) stationarity check.
 Results and discussion
 ----------------------
 
-The optimized laws reduce mission throughput capacity from 1.808812 to
-1.803642 Ah, a reduction of **5.170 mAh (0.286%)**.
+After three accepted updates, the optimized laws reduce mission throughput
+capacity from 1.811006 to 1.805752 Ah, a reduction of **5.253 mAh (0.290%)**.
 
 .. list-table:: Baseline and optimized mission
    :header-rows: 1
@@ -395,23 +396,23 @@ The optimized laws reduce mission throughput capacity from 1.808812 to
      - Baseline
      - Optimized
    * - Throughput capacity (Ah)
-     - 1.808812
-     - 1.803642
+     - 1.811006
+     - 1.805752
    * - Minimum voltage (V)
-     - 3.5731
-     - 3.5979
+     - 3.5531
+     - 3.5780
    * - Maximum current (A)
-     - 8.3961
-     - 8.3383
+     - 8.4432
+     - 8.3845
    * - Electrolyte concentration range (mol/m³)
-     - 323.8–2492.6
-     - 463.9–2160.0
+     - 330.3–2490.7
+     - 466.7–2166.3
    * - Transference number
      - 0.259400
-     - 0.270202
+     - 0.269992
    * - Property budget (limit 0.0625)
      - 0
-     - 0.06249994
+     - 0.06249995
 
 .. figure:: ../_static/tutorial_files/dfn_design_val/mission.png
    :width: 100%
@@ -423,11 +424,12 @@ The optimized laws reduce mission throughput capacity from 1.808812 to
    throughput capacity relative to baseline (right). Dashed blue denotes
    baseline and solid orange the optimized design. Dotted vertical lines
    mark the transitions from takeoff to cruise at 1 min and from cruise to
-   landing at 31 min. The final reduction is 5.170 mAh (0.286%), with 7.0 Wh
-   delivered by both designs.
+   landing at 31 min. The final reduction is 5.253 mAh (0.290%), with 7.0 Wh
+   delivered by both designs. Both simulations use ten cells per region and
+   ten radial shells per particle.
 
-Cruise contributes 4.029 mAh of the throughput reduction, with takeoff and
-landing contributing 0.376 and 0.766 mAh. The large cruise contribution
+Cruise contributes 4.077 mAh of the throughput reduction, with takeoff and
+landing contributing 0.391 and 0.785 mAh. The large cruise contribution
 reflects its long duration, even though the voltage gain is larger during
 takeoff and landing.
 
@@ -440,7 +442,7 @@ takeoff and landing.
    solid orange the converged design.
 
 The largest relative increases in diffusivity and conductivity occur near
-1000 mol/m³, reaching approximately 50% and 43%, respectively. The diffusivity
+1000 mol/m³, reaching approximately 49% and 44%, respectively. The diffusivity
 enhancement extends into the moderately depleted concentration range,
 while conductivity develops a more pronounced maximum near the
 initial concentration. During much of cruise, separator concentrations lie
@@ -454,7 +456,7 @@ ionic conduction during the mission. Changes above about 1800 mol/m³ are small.
    :alt: Baseline and optimized electrolyte concentration maps and spatial extrema
 
    Electrolyte concentration during the mission at 298.15 K. The upper maps
-   show baseline (left) and optimized (right) results with five cells per
+   show baseline (left) and optimized (right) results with ten cells per
    region. Both use the same linear colour scale from 200 to 2500 mol/m³.
    Purple indicates lower concentrations, progressing through blue and green
    to yellow at higher concentrations. White dotted lines separate the
@@ -475,7 +477,7 @@ the cell. At each internal finite-volume face it is approximated by
 This uses the same face-gradient formula as the forward model, including
 the nonuniform spacing between electrode and separator cells. Outer-face
 gradients are zero. On this mesh, the maximum gradient magnitude is
-26.88 mol/m³ per µm for baseline and 20.98 mol/m³ per µm for the converged
+27.62 mol/m³ per µm for baseline and 20.67 mol/m³ per µm for the converged
 design.
 
 .. figure:: ../_static/tutorial_files/dfn_design_val/electrolyte_gradient.png
@@ -483,8 +485,8 @@ design.
    :alt: Baseline and converged spatial electrolyte concentration gradients over time
 
    Spatial electrolyte concentration gradient during the mission at 298.15 K:
-   baseline (left) and converged design (right), on a common linear colour
-   scale. Position increases from the negative collector at the bottom to
+   baseline (left) and converged design (right), using ten cells per region
+   and a common linear colour scale. Position increases from the negative collector at the bottom to
    the positive collector at the top; negative gradients indicate decreasing
    concentration in this direction. Values are evaluated at finite-volume
    faces and displayed over the intervals between adjacent cell centres,
@@ -494,9 +496,9 @@ design.
 The concentration maps show reduced salt accumulation in the negative
 electrode and reduced depletion in the positive electrode. Higher
 diffusivity supports salt redistribution, while the increase in
-:math:`t_+` from 0.2594 to 0.2702 reduces the salt-source factor
+:math:`t_+` from 0.2594 to 0.2700 reduces the salt-source factor
 :math:`1-t_+`. The optimized design narrows the concentration range and
-reduces the maximum spatial gradient by about 22%. In the electrolyte-current
+reduces the maximum spatial gradient by about 25%. In the electrolyte-current
 equation, concentration polarization depends on
 :math:`(1-t_+)\nabla\ln c_e`, and the resistive potential gradient scales as
 :math:`i_e/(\epsilon^{1.5}\kappa_e)`. The flatter concentration profiles and
@@ -505,19 +507,19 @@ polarization.
 
 .. This interpretation is supported by the saved potential fields. At the end
 .. of landing, the voltage loss between electrolyte potentials averaged over
-.. each electrode decreases from 84.8 to 62.0 mV. Splitting the gradient of
+.. each electrode decreases from 85.4 to 62.4 mV. Splitting the gradient of
 .. electrolyte potential into concentration and resistive terms gives a concentration
-.. contribution of 52.2 versus 37.5 mV and an ohmic contribution of 32.6 versus
-.. 24.5 mV for baseline and optimized designs, respectively. Their combined
-.. reduction of 22.8 mV accounts for most of the 24.8 mV gain in terminal voltage
+.. contribution of 51.1 versus 36.8 mV and an ohmic contribution of 34.2 versus
+.. 25.5 mV for baseline and optimized designs, respectively. Their combined
+.. reduction of 23.0 mV accounts for most of the 24.9 mV gain in terminal voltage
 .. at this point in the mission.
 ..
 
 Under power control, the resulting voltage gain lowers current through
 :math:`I=P/V`, reducing the integral that defines throughput capacity.
 The charge-weighted mean terminal voltage, :math:`E/Q_{\mathrm{th}}`, rises
-from 3.86994 to 3.88104 V while both designs deliver 7.0 Wh. An increase of
-about 11.1 mV on this voltage scale explains the modest 0.286% capacity
+from 3.86526 to 3.87650 V while both designs deliver 7.0 Wh. An increase of
+about 11.2 mV on this voltage scale explains the modest 0.290% capacity
 saving, despite the larger relative changes in transport properties and
 concentration gradients. The optimization improves mission utilization by
 reducing electrolyte losses.
@@ -527,12 +529,12 @@ reducing electrolyte losses.
 .. coefficient in each transport-property spline reaches its upper bound.
 .. These design constraints limit further modification at the final solution.
 ..
-.. The independently recomputed gradient mapping is :math:`3.99\times10^{-6}`
-.. and the KKT residual is :math:`3.99\times10^{-6}`, both below the
+.. The independently recomputed gradient mapping is :math:`6.50\times10^{-6}`
+.. and the KKT residual is :math:`6.50\times10^{-6}`, both below the
 .. :math:`10^{-5}` tolerance. Halving the time steps changes optimized throughput
-.. capacity by 0.00846 mAh, minimum voltage by 0.136 mV and concentration extrema
-.. by at most 3.38 mol/m³. An independent adaptive solve gives comparable agreement.
-.. The adjoint stationarity check also passes on the finer time grid.
+.. capacity by 0.01574 mAh, minimum voltage by 0.250 mV and concentration extrema
+.. by at most 4.33 mol/m³. An independent adaptive solve gives comparable agreement.
+.. The adjoint stationarity check also passes on the 445-node finer time grid.
 
 These transport targets are specific to the mission, cell model
 and design allowance. The study demonstrates a complete forward, adjoint

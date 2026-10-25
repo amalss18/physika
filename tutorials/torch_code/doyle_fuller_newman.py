@@ -664,11 +664,11 @@ def integrate_dfn():
     return output
 
 # === Program ===
-nx_n = 5
-nx_s = 5
-nx_p = 5
-nr_n = 5
-nr_p = 5
+nx_n = 10
+nx_s = 10
+nx_p = 10
+nr_n = 10
+nr_p = 10
 current_nominal = 5.0
 faraday = 96485.33212
 gas_constant = 8.31446261815324
