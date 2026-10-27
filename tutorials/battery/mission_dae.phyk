@@ -1,4 +1,4 @@
-# BE/BDF2 and an implicit discrete adjoint for the mission tutorial.
+# BE/BDF2 mission integration and residual derivatives for the heat adjoint.
 # Caller globals describe one fixed cell. theta and phase power are explicit.
 # The existing battery-local Gaussian solver supplies every linear solve.
 newton_tolerance: ℝ = 2e-6
@@ -422,66 +422,3 @@ def refine_grid(grid: ℝ[max_nodes,tape_columns]): ℝ[max_nodes,tape_columns]:
 
 def residual_contraction(theta: ℝ[n_parameters], multiplier: ℝ[nb], u: ℝ[nb], a: ℝ[nd], history: ℝ[nd], t: ℝ, h: ℝ, alpha: ℝ, power: ℝ): ℝ:
     return multiplier @ step_residual(u,a,history,t,h,alpha,theta,power)
-
-# Reverse the converged implicit equations. Translation by the previous state
-# makes the Newton increment Jacobian equal to the independently scaled current
-# state Jacobian. Its history blocks are -beta*Id and +gamma*Id.
-# Output: [13 gradient entries, success, number of transposed solves].
-def mission_adjoint(theta: ℝ[n_parameters], tape: ℝ[max_nodes,tape_columns], groups: ℝ[8], penalized: ℝ): ℝ[n_parameters+2]:
-    output: ℝ[n_parameters+2] = zeros(n_parameters+2)
-    rhs: ℝ[max_nodes,nb] = zeros(max_nodes,nb)
-    weights: ℝ[6] = penalized*2.0*penalty_weight*maximum(groups[0:6],0.0)
-    path_active: ℝ = sum(weights)
-    last: ℝ = tape[0,0]
-    node: ℝ = last
-    u: ℝ[nb] = zeros(nb)
-    scaled_state: ℝ[nb] = zeros(nb)
-    a: ℝ[nd] = x0
-    history: ℝ[nd] = zeros(nd)
-    w: ℝ[nb] = zeros(nb)
-    multiplier: ℝ[nb] = zeros(nb)
-    J: ℝ[nb,nb] = zeros(nb,nb)
-    transposed: ℝ[nb,nb] = zeros(nb,nb)
-    gradient: ℝ[n_parameters] = penalized*grad(budget_penalty(theta),theta)
-    live: ℝ = tape[0,1]
-    h: ℝ = 0.0
-    alpha: ℝ = 1.0
-    gamma: ℝ = 0.0
-    power: ℝ = 30.0
-    rhs[last,nd-1] = 1.0+penalized*2.0*penalty_weight*max(groups[6],0.0)
-    for backward:ℕ(last):
-        if live > 0.0:
-            node = last-backward
-            w = tape[node,6:tape_columns]
-            a = x0
-            history = zeros(nd)
-            h = tape[node,1]
-            alpha = tape[node,2]
-            gamma = tape[node,4]
-            power = tape[node,5]
-            if node > 1.0:
-                a = tape[node-1,6:6+nd]
-            if gamma > 0.0:
-                history = gamma*(tape[node-2,6:6+nd]-a)
-            u = concat(w[0:nd]-a,w[nd:nb])/solver_scale
-            if path_active > 0.0:
-                scaled_state = w/solver_scale
-                rhs[node,:] = rhs[node,:]+grad(local_penalty(scaled_state,groups,weights),scaled_state)
-            J = step_jacobian(u,a,history,tape[node,0]-h,h,alpha,theta,power)
-            for column:ℕ(nb):
-                transposed[column,:] = J[:,column]
-            multiplier = detach(gaussian_solve(transposed,rhs[node,:]))
-            if finite_values(multiplier,nb) > 0.0:
-                gradient = gradient-grad(residual_contraction(theta,multiplier,u,a,history,tape[node,0]-h,h,alpha,power),theta)
-                output[n_parameters+1] = output[n_parameters+1]+1.0
-                if node > 1.0:
-                    rhs[node-1,0:nd] = rhs[node-1,0:nd]+tape[node,3]*multiplier[0:nd]
-                if gamma > 0.0:
-                    rhs[node-2,0:nd] = rhs[node-2,0:nd]-gamma*multiplier[0:nd]
-            else:
-                live = 0.0
-    if finite_values(gradient,n_parameters) < 1.0:
-        live = 0.0
-    output[0:n_parameters] = gradient
-    output[n_parameters] = live
-    return output
