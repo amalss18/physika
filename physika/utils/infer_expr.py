@@ -1,5 +1,7 @@
 from typing import Any, Callable, Optional, Tuple, Union, cast
-from physika.utils.types import Substitution, Type, TVar, TDim, TTensor, TInstance, TFunc, TScalar, T_NAT, T_REAL, T_COMPLEX, TList, new_dim  # noqa: E501
+from physika.utils.types import (Substitution, Type, TVar, TDim, TTensor,
+                                 TInstance, TFunc, TScalar, T_NAT, T_REAL,
+                                 T_COMPLEX, TList, new_dim)
 from physika.utils.ast_utils import ASTNode
 from physika.elf import REGISTRY
 

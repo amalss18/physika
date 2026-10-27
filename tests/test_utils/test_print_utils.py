@@ -26,3 +26,11 @@ class TestInferType:
 
         complex_R_2D = _infer_type(torch.tensor([[1j, 2j], [3j, 4j]]))
         assert complex_R_2D == 'ℂ[2,2]'
+
+    def testStringValues(self):
+        """"Tests for string values"""
+        simple_string = _infer_type("physika")
+        assert simple_string == "string"
+
+        spaced_string = _infer_type("hello world!")
+        assert spaced_string == "string"

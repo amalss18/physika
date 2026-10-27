@@ -56,6 +56,8 @@ def p_type_scalar(p):
         p[0] = "ℂ"
     elif p[1] == "list":
         p[0] = "list"
+    elif p[1] == "string":
+        p[0] = "string"
     else:
         p[0] = "ℝ"
 
@@ -721,6 +723,21 @@ def p_func_loop_body_multi(p):
     p[0] = p[1] + ([p[2]] if p[2] else [])
 
 
+def p_func_loop_stmt_decl(p):
+    """func_loop_stmt : ID COLON type_spec EQUALS func_expr NEWLINE"""
+    # Declaration inside a function loop body
+    # Example:
+    # for i:
+    #   curr: ℝ = arr[i]
+    # Parameters:
+    #   p[1] - variable name
+    #   p[3] - data type
+    #   p[5] - right hand side expression
+    # Returns:
+    #   ("loop_decl", name, type_spec, rhs)
+    p[0] = ("loop_decl", p[1], p[3], p[5])
+
+
 def p_func_loop_stmt_assign(p):
     """func_loop_stmt : ID EQUALS func_expr NEWLINE"""
     # Assignment inside a loop body
@@ -1026,6 +1043,21 @@ def p_for_body_multi(p):
     p[0] = p[1] + ([p[2]] if p[2] is not None else [])
 
 
+def p_for_statement_decl(p):
+    """for_statement : ID COLON type_spec EQUALS func_expr NEWLINE"""
+    # Declaration inside a loop body
+    # Example:
+    # for i:
+    #   curr: ℝ = arr[i]
+    # Parameters:
+    #   p[1] - variable name
+    #   p[3] - data type
+    #   p[5] - right hand side expression
+    # Returns:
+    #   ("for_decl", name, type_spec, rhs)
+    p[0] = ("for_decl", p[1], p[3], p[5])
+
+
 def p_for_statement_assign(p):
     """for_statement : ID EQUALS func_expr NEWLINE"""
     # Store as AST to be evaluated later
@@ -1248,12 +1280,6 @@ def p_func_factor_array(p):
     p[0] = ("array", p[2])
 
 
-def p_func_factor_string(p):
-    """func_factor : STRING"""
-    # String literal (for equations): 'x0 = a + b'
-    p[0] = ("string", p[1])
-
-
 def p_func_factor_imaginary(p):
     """func_factor : IMAGINARY"""
     # Imaginary unit i
@@ -1420,12 +1446,6 @@ def p_factor_array(p):
     """factor : LBRACKET elements RBRACKET"""
     # Return AST node for array literal
     p[0] = ("array", p[2])
-
-
-def p_factor_string(p):
-    """factor : STRING"""
-    # String literal (for equations and symbolic): 'x0 = a + b'
-    p[0] = ("equation_string", p[1])
 
 
 def p_factor_for_expr_range(p):

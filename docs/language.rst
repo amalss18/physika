@@ -69,6 +69,14 @@ list
    simple_nested_list: list = [x, y]
    nested_list: list = [1, 2, x, [x, y]]
 
+string
+~~~~~~
+
+.. code-block:: text
+
+   name: string = "Physika"
+   msg: string = "Hello, World!"
+
 
 Declarations and Expressions
 -----------------------------

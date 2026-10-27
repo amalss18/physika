@@ -336,6 +336,8 @@ def _infer_type(v: Any) -> str:
             shape.append(len(current))
             current = current[0]
         return f"ℝ[{','.join(str(d) for d in shape)}]"
+    if isinstance(v, str):
+        return "string"
     if isinstance(v, nn.Module):
         return type(v).__name__
     return str(type(v).__name__)

@@ -31,6 +31,8 @@ Tutorials
    central_dogma
    selkov_glycolysis
    michaelis_menten
+   goldbeter_koshland
+   weisse_host_model
 
 .. toctree::
    :maxdepth: 1
@@ -104,6 +106,12 @@ Tutorials
    undirected_graph
    kmeans
    neural_ode
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Electronics and Electrical Systems
+
+   electrostatics_and_circuit_dynamics
 
 .. toctree::
    :maxdepth: 1
