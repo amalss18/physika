@@ -763,13 +763,16 @@ trajectory = integrate_dfn()
 prediction_fields = trajectory_fields(trajectory)
 inventory_drift = lithium_inventory_drift(trajectory)
 if trajectory[int(0), int(1)] == 1.0:
-    print('Predictions: [time (s), voltage (V), discharged capacity (Ah)]')
+    diagnostic_label = 'Predictions: [time (s), voltage (V), discharged capacity (Ah)]'
+    print(diagnostic_label)
     print(prediction_values(trajectory, prediction_fields, 1.0))
     print(prediction_values(trajectory, prediction_fields, 3.0))
     print(prediction_values(trajectory, prediction_fields, 31.0))
     print(prediction_values(trajectory, prediction_fields, 61.0))
-    print('Cutoff prediction: [time (s), voltage (V), discharged capacity (Ah)]')
+    diagnostic_label = 'Cutoff prediction: [time (s), voltage (V), discharged capacity (Ah)]'
+    print(diagnostic_label)
     print(prediction_values(trajectory, prediction_fields, trajectory[int(0), int(0)]))
 else:
-    print('DFN solve did not reach cutoff; solver status:')
+    diagnostic_label = 'DFN solve did not reach cutoff; solver status:'
+    print(diagnostic_label)
 print(print(trajectory[int(0), int(1)]))

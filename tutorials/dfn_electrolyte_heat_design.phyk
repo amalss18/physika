@@ -602,7 +602,8 @@ def optimize_mission(theta0: ℝ[n_parameters], grid: ℝ[max_nodes,tape_columns
                             projection = project_design(detach(theta-step*gradient))
                             trial = detach(projection[0:n_parameters])
                             if projection[n_parameters] < 1.0:
-                                print("Rejected projection trial: [step, projection status]")
+                                diagnostic_label: string = "Rejected projection trial: [step, projection status]"
+                                print(diagnostic_label)
                                 print([step,projection[n_parameters]])
                             else:
                                 predicted_change = gradient @ (trial-theta)
@@ -693,34 +694,35 @@ def property_table(theta: ℝ[n_parameters]): ℝ[41,5]:
     return result
 
 # Run the heat mission.
-# Diagnostic string prints use statement blocks supported by the type checker.
 theta_baseline: ℝ[n_parameters] = zeros(n_parameters)
-if 1.0 > 0.0:
-    print("Baseline thermal mission: adaptive grid")
+diagnostic_label: string = "Baseline thermal mission: adaptive grid"
+print(diagnostic_label)
 adaptive_baseline_grid: ℝ[max_nodes,tape_columns] = adaptive_mission(theta_baseline,maximum_step)
 mission_grid: ℝ[max_nodes,tape_columns] = resolve_heat_grid(adaptive_baseline_grid,high_power_step)
-if 1.0 > 0.0:
-    print("Baseline thermal mission: fixed-grid replay")
+diagnostic_label: string = "Baseline thermal mission: fixed-grid replay"
+print(diagnostic_label)
 baseline_trajectory: ℝ[max_nodes,tape_columns] = replay_mission(theta_baseline,mission_grid)
 baseline_metrics: ℝ[14] = mission_metrics(theta_baseline,baseline_trajectory)
 baseline_heat: ℝ[12] = thermal_metrics(theta_baseline,baseline_trajectory)
-if 1.0 > 0.0:
-    print("Lumped model: thermal capacity J/K, cooling coefficient W/m2/K, cooling area m2")
+diagnostic_label: string = "Lumped model: thermal capacity J/K, cooling coefficient W/m2/K, cooling area m2"
+print(diagnostic_label)
 print([thermal_capacity,cooling_coefficient,cooling_area])
-if 1.0 > 0.0:
-    print("Baseline: electrical feasibility metrics, then thermal metrics")
+diagnostic_label: string = "Baseline: electrical feasibility metrics, then thermal metrics"
+print(diagnostic_label)
 print(baseline_metrics)
 print(baseline_heat)
 optimization_history: ℝ[optimization_steps+2,history_columns] = zeros(optimization_steps+2,history_columns)
 theta_best: ℝ[n_parameters] = theta_baseline
 if baseline_metrics[11] > 0.0:
-    print("Native peak-heat optimization: [update,peak W,merit,step,incoming stationarity,feasible,budget]")
+    diagnostic_label: string = "Native peak-heat optimization: [update,peak W,merit,step,incoming stationarity,feasible,budget]"
+    print(diagnostic_label)
     optimization_history = optimize_mission(theta_baseline,mission_grid,baseline_trajectory)
     theta_best = optimization_history[0,0:n_parameters]
 else:
-    print("BASELINE INFEASIBLE: optimization skipped; inspect the diagnostics.")
-if 1.0 > 0.0:
-    print("Optimization summary, then design coefficients")
+    diagnostic_label: string = "BASELINE INFEASIBLE: optimization skipped; inspect the diagnostics."
+    print(diagnostic_label)
+diagnostic_label: string = "Optimization summary, then design coefficients"
+print(diagnostic_label)
 print(optimization_history[0,:])
 print(theta_best)
 best_trajectory: ℝ[max_nodes,tape_columns] = replay_mission(theta_best,mission_grid)
@@ -738,16 +740,16 @@ if optimization_history[0,n_parameters] == 2.0:
             if stationarity_diagnostics[3] <= stationarity_tolerance:
                 if stationarity_diagnostics[5] > 0.0:
                     converged = 1.0
-if 1.0 > 0.0:
-    print("Best: electrical metrics, thermal metrics, and first-order stationarity")
+diagnostic_label: string = "Best: electrical metrics, thermal metrics, and first-order stationarity"
+print(diagnostic_label)
 print(best_metrics)
 print(best_heat)
 print(stationarity_diagnostics)
 property_targets: ℝ[41,5] = property_table(theta_best)
 
 # Halve every time step and independently rebuild an adaptive grid.
-if 1.0 > 0.0:
-    print("Time verification: halved-grid forward and adjoint solves")
+diagnostic_label: string = "Time verification: halved-grid forward and adjoint solves"
+print(diagnostic_label)
 refined_mission_grid: ℝ[max_nodes,tape_columns] = refine_grid(mission_grid)
 refined_baseline_trajectory: ℝ[max_nodes,tape_columns] = replay_mission(theta_baseline,refined_mission_grid)
 refined_best_trajectory: ℝ[max_nodes,tape_columns] = replay_mission(theta_best,refined_mission_grid)
@@ -758,8 +760,8 @@ refined_best_heat: ℝ[12] = thermal_metrics(theta_best,refined_best_trajectory)
 refined_best_constraints: ℝ[8] = mission_constraints(theta_best,refined_best_trajectory)
 refined_best_adjoint: ℝ[n_parameters+2] = heat_adjoint(theta_best,refined_best_trajectory,refined_best_constraints,0.0)
 refined_stationarity_diagnostics: ℝ[6] = constrained_stationarity(theta_best,detach(refined_best_adjoint[0:n_parameters]))
-if 1.0 > 0.0:
-    print("Time verification: independent adaptive forward solve")
+diagnostic_label: string = "Time verification: independent adaptive forward solve"
+print(diagnostic_label)
 verification_trajectory: ℝ[max_nodes,tape_columns] = adaptive_mission(theta_best,maximum_step/2.0)
 verification_metrics: ℝ[14] = mission_metrics(theta_best,verification_trajectory)
 verification_heat: ℝ[12] = thermal_metrics(theta_best,verification_trajectory)
@@ -792,18 +794,20 @@ if verification_errors[3] > 10.0:
     run_verified = 0.0
 if refined_baseline_heat[0]-refined_best_heat[0] <= 5.0*max(refinement_errors[0],refinement_errors[1]):
     run_verified = 0.0
-if 1.0 > 0.0:
-    print("Halved-grid baseline/best thermal metrics, stationarity, forward errors")
+diagnostic_label: string = "Halved-grid baseline/best thermal metrics, stationarity, forward errors"
+print(diagnostic_label)
 print(refined_baseline_heat)
 print(refined_best_heat)
 print(refined_stationarity_diagnostics)
 print(refinement_errors)
-if 1.0 > 0.0:
-    print("Independent adaptive thermal metrics and forward errors")
+diagnostic_label: string = "Independent adaptive thermal metrics and forward errors"
+print(diagnostic_label)
 print(verification_heat)
 print(verification_errors)
 if run_verified > 0.0:
-    print("RUN VERIFIED: first-order constrained convergence and time checks passed.")
+    diagnostic_label: string = "RUN VERIFIED: first-order constrained convergence and time checks passed."
+    print(diagnostic_label)
 else:
-    print("RUN INCOMPLETE: convergence or forward verification did not pass; inspect diagnostics.")
+    diagnostic_label: string = "RUN INCOMPLETE: convergence or forward verification did not pass; inspect diagnostics."
+    print(diagnostic_label)
 print([run_verified,converged])

@@ -438,7 +438,8 @@ def optimize_mission(theta0, grid, initial_tape):
                             projection = project_design(detach((theta - (step * gradient))))
                             trial = detach(projection[int(0):int(n_parameters)])
                             if projection[int(n_parameters)] < 1.0:
-                                print('Rejected projection trial: [step, projection status]')
+                                diagnostic_label = 'Rejected projection trial: [step, projection status]'
+                                print(diagnostic_label)
                                 print(torch.stack([torch.as_tensor(step), torch.as_tensor(projection[int(n_parameters)])]))
                             else:
                                 predicted_change = (gradient @ (trial - theta))
@@ -1516,32 +1517,34 @@ absolute_tolerance = 1e-06
 algebraic_tolerance = 0.0002
 state_correction_tolerance = 1e-06
 theta_baseline = torch.zeros(int(n_parameters), device=DEVICE)
-if 1.0 > 0.0:
-    print('Baseline thermal mission: adaptive grid')
+diagnostic_label = 'Baseline thermal mission: adaptive grid'
+print(print(diagnostic_label))
 adaptive_baseline_grid = adaptive_mission(theta_baseline, maximum_step)
 mission_grid = resolve_heat_grid(adaptive_baseline_grid, high_power_step)
-if 1.0 > 0.0:
-    print('Baseline thermal mission: fixed-grid replay')
+diagnostic_label = 'Baseline thermal mission: fixed-grid replay'
+print(print(diagnostic_label))
 baseline_trajectory = replay_mission(theta_baseline, mission_grid)
 baseline_metrics = mission_metrics(theta_baseline, baseline_trajectory)
 baseline_heat = thermal_metrics(theta_baseline, baseline_trajectory)
-if 1.0 > 0.0:
-    print('Lumped model: thermal capacity J/K, cooling coefficient W/m2/K, cooling area m2')
+diagnostic_label = 'Lumped model: thermal capacity J/K, cooling coefficient W/m2/K, cooling area m2'
+print(print(diagnostic_label))
 print(print(torch.stack([torch.as_tensor(thermal_capacity), torch.as_tensor(cooling_coefficient), torch.as_tensor(cooling_area)])))
-if 1.0 > 0.0:
-    print('Baseline: electrical feasibility metrics, then thermal metrics')
+diagnostic_label = 'Baseline: electrical feasibility metrics, then thermal metrics'
+print(print(diagnostic_label))
 print(print(baseline_metrics))
 print(print(baseline_heat))
 optimization_history = torch.zeros(int((optimization_steps + 2)), int(history_columns), device=DEVICE)
 theta_best = theta_baseline
 if baseline_metrics[int(11)] > 0.0:
-    print('Native peak-heat optimization: [update,peak W,merit,step,incoming stationarity,feasible,budget]')
+    diagnostic_label = 'Native peak-heat optimization: [update,peak W,merit,step,incoming stationarity,feasible,budget]'
+    print(diagnostic_label)
     optimization_history = optimize_mission(theta_baseline, mission_grid, baseline_trajectory)
     theta_best = optimization_history[int(0), int(0):int(n_parameters)]
 else:
-    print('BASELINE INFEASIBLE: optimization skipped; inspect the diagnostics.')
-if 1.0 > 0.0:
-    print('Optimization summary, then design coefficients')
+    diagnostic_label = 'BASELINE INFEASIBLE: optimization skipped; inspect the diagnostics.'
+    print(diagnostic_label)
+diagnostic_label = 'Optimization summary, then design coefficients'
+print(print(diagnostic_label))
 print(print(optimization_history[int(0), :]))
 print(print(theta_best))
 best_trajectory = replay_mission(theta_best, mission_grid)
@@ -1557,14 +1560,14 @@ if optimization_history[int(0), int(n_parameters)] == 2.0:
             if stationarity_diagnostics[int(3)] <= stationarity_tolerance:
                 if stationarity_diagnostics[int(5)] > 0.0:
                     converged = 1.0
-if 1.0 > 0.0:
-    print('Best: electrical metrics, thermal metrics, and first-order stationarity')
+diagnostic_label = 'Best: electrical metrics, thermal metrics, and first-order stationarity'
+print(print(diagnostic_label))
 print(print(best_metrics))
 print(print(best_heat))
 print(print(stationarity_diagnostics))
 property_targets = property_table(theta_best)
-if 1.0 > 0.0:
-    print('Time verification: halved-grid forward and adjoint solves')
+diagnostic_label = 'Time verification: halved-grid forward and adjoint solves'
+print(print(diagnostic_label))
 refined_mission_grid = refine_grid(mission_grid)
 refined_baseline_trajectory = replay_mission(theta_baseline, refined_mission_grid)
 refined_best_trajectory = replay_mission(theta_best, refined_mission_grid)
@@ -1575,8 +1578,8 @@ refined_best_heat = thermal_metrics(theta_best, refined_best_trajectory)
 refined_best_constraints = mission_constraints(theta_best, refined_best_trajectory)
 refined_best_adjoint = heat_adjoint(theta_best, refined_best_trajectory, refined_best_constraints, 0.0)
 refined_stationarity_diagnostics = constrained_stationarity(theta_best, detach(refined_best_adjoint[int(0):int(n_parameters)]))
-if 1.0 > 0.0:
-    print('Time verification: independent adaptive forward solve')
+diagnostic_label = 'Time verification: independent adaptive forward solve'
+print(print(diagnostic_label))
 verification_trajectory = adaptive_mission(theta_best, (maximum_step / 2.0))
 verification_metrics = mission_metrics(theta_best, verification_trajectory)
 verification_heat = thermal_metrics(theta_best, verification_trajectory)
@@ -1609,18 +1612,20 @@ if verification_errors[int(3)] > 10.0:
     run_verified = 0.0
 if (refined_baseline_heat[int(0)] - refined_best_heat[int(0)]) <= (5.0 * max(refinement_errors[int(0)], refinement_errors[int(1)])):
     run_verified = 0.0
-if 1.0 > 0.0:
-    print('Halved-grid baseline/best thermal metrics, stationarity, forward errors')
+diagnostic_label = 'Halved-grid baseline/best thermal metrics, stationarity, forward errors'
+print(print(diagnostic_label))
 print(print(refined_baseline_heat))
 print(print(refined_best_heat))
 print(print(refined_stationarity_diagnostics))
 print(print(refinement_errors))
-if 1.0 > 0.0:
-    print('Independent adaptive thermal metrics and forward errors')
+diagnostic_label = 'Independent adaptive thermal metrics and forward errors'
+print(print(diagnostic_label))
 print(print(verification_heat))
 print(print(verification_errors))
 if run_verified > 0.0:
-    print('RUN VERIFIED: first-order constrained convergence and time checks passed.')
+    diagnostic_label = 'RUN VERIFIED: first-order constrained convergence and time checks passed.'
+    print(diagnostic_label)
 else:
-    print('RUN INCOMPLETE: convergence or forward verification did not pass; inspect diagnostics.')
+    diagnostic_label = 'RUN INCOMPLETE: convergence or forward verification did not pass; inspect diagnostics.'
+    print(diagnostic_label)
 print(print(torch.stack([torch.as_tensor(run_verified), torch.as_tensor(converged)])))
